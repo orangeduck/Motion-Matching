@@ -93,8 +93,8 @@ void normalize_feature(
     const int size, 
     const float weight = 1.0f)
 {
-	// First compute what is essentially the mean 
-	// value for each feature dimension
+    // First compute what is essentially the mean 
+    // value for each feature dimension
     for (int j = 0; j < size; j++)
     {
         features_offset(offset + j) = 0.0f;    
@@ -108,7 +108,7 @@ void normalize_feature(
         }
     }
     
-	// Now compute the variance of each feature dimension
+    // Now compute the variance of each feature dimension
     array1d<float> vars(size);
     vars.zero();
     
@@ -120,25 +120,25 @@ void normalize_feature(
         }
     }
     
-	// We compute the overall std of the feature as the average
-	// std across all dimensions
+    // We compute the overall std of the feature as the average
+    // std across all dimensions
     float std = 0.0f;
     for (int j = 0; j < size; j++)
     {
         std += sqrtf(vars(j)) / size;
     }
     
-	// Features with no variation can have zero std which is
-	// almost always a bug.
+    // Features with no variation can have zero std which is
+    // almost always a bug.
     assert(std > 0.0);
     
-	// The scale of a feature is just the std divided by the weight
+    // The scale of a feature is just the std divided by the weight
     for (int j = 0; j < size; j++)
     {
         features_scale(offset + j) = std / weight;
     }
     
-	// Using the offset and scale we can then normalize the features
+    // Using the offset and scale we can then normalize the features
     for (int i = 0; i < features.rows; i++)
     {
         for (int j = 0; j < size; j++)
@@ -206,7 +206,7 @@ void forward_kinematics_velocity(
     const slice1d<int> bone_parents,
     const int bone)
 {
-	//
+    //
     if (bone_parents(bone) != -1)
     {
         vec3 parent_position;
@@ -253,7 +253,7 @@ void forward_kinematics_full(
 {
     for (int i = 0; i < bone_parents.size; i++)
     {
-		// Assumes bones are always sorted from root onwards
+        // Assumes bones are always sorted from root onwards
         assert(bone_parents(i) < i);
         
         if (bone_parents(i) == -1)
@@ -601,7 +601,7 @@ void motion_matching_search(
             int i_lr = i / BOUND_LR_SIZE;
             int i_lr_next = (i_lr + 1) * BOUND_LR_SIZE;
             
-			// Find distance to box
+            // Find distance to box
             curr_cost = transition_cost;
             for (int j = 0; j < nfeatures; j++)
             {
@@ -614,21 +614,21 @@ void motion_matching_search(
                 }
             }
             
-			// If distance is greater than current best jump to next box
+            // If distance is greater than current best jump to next box
             if (curr_cost >= best_cost)
             {
                 i = i_lr_next;
                 continue;
             }
             
-			// Check against small box
+            // Check against small box
             while (i < i_lr_next && i < range_end)
             {   
                 // Find index of current and next small box
                 int i_sm = i / BOUND_SM_SIZE;
                 int i_sm_next = (i_sm + 1) * BOUND_SM_SIZE;
                 
-				// Find distance to box
+                // Find distance to box
                 curr_cost = transition_cost;
                 for (int j = 0; j < nfeatures; j++)
                 {
@@ -641,14 +641,14 @@ void motion_matching_search(
                     }
                 }
                 
-				// If distance is greater than current best jump to next box
+                // If distance is greater than current best jump to next box
                 if (curr_cost >= best_cost)
                 {
                     i = i_sm_next;
                     continue;
                 }
                 
-				// Search inside small box
+                // Search inside small box
                 while (i < i_sm_next && i < range_end)
                 {
                     // Skip surrounding frames
@@ -669,7 +669,7 @@ void motion_matching_search(
                         }
                     }
                     
-					// If cost is lower than current best then update best
+                    // If cost is lower than current best then update best
                     if (curr_cost < best_cost)
                     {
                         best_index = i;

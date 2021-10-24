@@ -614,7 +614,7 @@ void simulation_positions_update(
     const slice1d<vec3> obstacles_positions,
     const slice1d<vec3> obstacles_scales)
 {
-    float y = halflife_to_damping(halflife) / 2.0f;	
+    float y = halflife_to_damping(halflife) / 2.0f; 
     vec3 j0 = velocity - desired_velocity;
     vec3 j1 = acceleration + j0*y;
     float eydt = fast_negexpf(y*dt);

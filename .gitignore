@@ -1,1 +1,5 @@
-*.exe
+controller.exe
+controller.data
+controller.js
+controller.html
+controller.wasm

@@ -88,7 +88,7 @@ static inline quat quat_abs(quat x)
 static inline quat quat_exp(vec3 v, float eps=1e-8f)
 {
     float halfangle = sqrtf(v.x*v.x + v.y*v.y + v.z*v.z);
-    
+	
     if (halfangle < eps)
     {
         return quat_normalize(quat(1.0f, v.x, v.y, v.z));
@@ -104,7 +104,7 @@ static inline quat quat_exp(vec3 v, float eps=1e-8f)
 static inline vec3 quat_log(quat q, float eps=1e-8f)
 {
     float length = sqrtf(q.x*q.x + q.y*q.y + q.z*q.z);
-    
+	
     if (length < eps)
     {
         return vec3(q.x, q.y, q.z);
@@ -194,7 +194,7 @@ static inline quat quat_slerp_shortest(quat q, quat p, float alpha, float eps=1e
     }
     
     float dot = quat_dot(q, p);
-    float theta = acosf(clampf(dot, -1.0f, 1.0f));
+	  float theta = acosf(clampf(dot, -1.0f, 1.0f));
 
     if (theta < eps)
     {

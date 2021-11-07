@@ -5,6 +5,9 @@ extern "C"
 #define RAYGUI_IMPLEMENTATION
 #include "raygui.h"
 }
+#if defined(PLATFORM_WEB)
+#include <emscripten/emscripten.h>
+#endif
 
 #include "common.h"
 #include "vec.h"
@@ -15,6 +18,7 @@ extern "C"
 #include "database.h"
 
 #include <initializer_list>
+#include <functional>
 
 //--------------------------------------
 
@@ -1189,6 +1193,11 @@ quat clamp_character_rotation(
 
 //--------------------------------------
 
+void update_callback(void* args)
+{
+    ((std::function<void()>*)args)->operator()();
+}
+
 int main(void)
 {
     // Init Window
@@ -1229,7 +1238,7 @@ int main(void)
     
     // Ground Plane
     
-    Shader ground_plane_shader = LoadShader("./lafan01/checkerboard.vs", "./lafan01/checkerboard.fs");
+    Shader ground_plane_shader = LoadShader("./resources/checkerboard.vs", "./resources/checkerboard.fs");
     Mesh ground_plane_mesh = GenMeshPlane(20.0f, 20.0f, 10, 10);
     Model ground_plane_model = LoadModelFromMesh(ground_plane_mesh);
     ground_plane_model.materials[0].shader = ground_plane_shader;
@@ -1237,9 +1246,9 @@ int main(void)
     // Character
     
     character character_data;
-    character_load(character_data, "./lafan01/character.bin");
+    character_load(character_data, "./resources/character.bin");
     
-    Shader character_shader = LoadShader("./lafan01/character.vs", "./lafan01/character.fs");
+    Shader character_shader = LoadShader("./resources/character.vs", "./resources/character.fs");
     Mesh character_mesh = make_character_mesh(character_data);
     Model character_model = LoadModelFromMesh(character_mesh);
     character_model.materials[0].shader = character_shader;
@@ -1247,7 +1256,7 @@ int main(void)
     // Load Animation Data and build Matching Database
     
     database db;
-    database_load(db, "./lafan01/database.bin");
+    database_load(db, "./resources/database.bin");
     
     float feature_weight_foot_position = 0.75f;
     float feature_weight_foot_velocity = 1.0f;
@@ -1450,8 +1459,9 @@ int main(void)
 
     float dt = 1.0f / 60.0f;
 
-    while (!WindowShouldClose())
+    auto update_func = [&]()
     {
+      
         // Get gamepad stick states
         vec3 gamepadstick_left = gamepad_get_stick(GAMEPAD_STICK_LEFT);
         vec3 gamepadstick_right = gamepad_get_stick(GAMEPAD_STICK_RIGHT);
@@ -2291,7 +2301,17 @@ int main(void)
 
         EndDrawing();
 
+    };
+
+#if defined(PLATFORM_WEB)
+    std::function<void()> u{update_func};
+    emscripten_set_main_loop_arg(update_callback, &u, 0, 1);
+#else
+    while (!WindowShouldClose())
+    {
+        update_func();
     }
+#endif
 
     // Unload stuff and finish
     UnloadModel(character_model);

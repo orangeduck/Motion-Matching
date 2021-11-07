@@ -1,4 +1,5 @@
-#version 330
+#version 300 es
+precision mediump float;
 
 in vec3 fragPosition;
 in vec2 fragTexCoord;
@@ -8,6 +9,7 @@ in vec3 fragNormal;
 uniform vec4 colDiffuse;
 
 out vec4 finalColor;
+
 
 void main()
 {

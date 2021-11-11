@@ -19,12 +19,13 @@
         font-family: arial; 
         margin: 0; 
         padding: none;
+        background-color: rgb(240,240,240); 
       }
       
       #header { 
-        width: 100%; 
+        width: 1280px;
         height: 80px; 
-        background-color: #888888; 
+        background-color: rgb(240,240,240);
       }
       
       /* NOTE: raylib logo is embedded in the page as base64 png image */
@@ -54,7 +55,17 @@ jwE50AGjLCVuS8Yt4H7OgZLKK5EKOsLviEWJSL/+0uMi7gLUSBseYwqEbXvSHCec1CJvZPyHCmYQffaB
       
       .emscripten { padding-right: 0; margin-left: auto; margin-right: auto; display: block; }
       div.emscripten { text-align: center; }      
-      div.emscripten_border { border: 1px solid black; }
+      div.emscripten_border {
+
+	  }
+	  
+	  div.container {
+		background-color: rgb(240,240,240); 
+		border: 2px solid #dc9542;
+        width: 1280px;
+		margin-left: auto;
+		margin-right: auto;
+	  }
       
       /* NOTE: Canvas *must not* have any border or padding, or mouse coords will be wrong */
       canvas.emscripten { 
@@ -79,9 +90,9 @@ jwE50AGjLCVuS8Yt4H7OgZLKK5EKOsLviEWJSL/+0uMi7gLUSBseYwqEbXvSHCec1CJvZPyHCmYQffaB
         border-left: 5px solid black;
         border-right: 5px solid black;
         border-bottom: 5px solid black;
-        border-top: 5px solid red;
+        border-top: 5px solid #dc9542;
         border-radius: 100%;
-        background-color: rgb(245, 245, 245);
+        background-color: rgb(240, 240, 240);
       }
       @-webkit-keyframes rotation {
         from {-webkit-transform: rotate(0deg);}
@@ -143,22 +154,27 @@ jwE50AGjLCVuS8Yt4H7OgZLKK5EKOsLviEWJSL/+0uMi7gLUSBseYwqEbXvSHCec1CJvZPyHCmYQffaB
     </style>
   </head>
   <body>
-    <div id="header">
-        <a id="logo" href="https://www.raylib.com"></a>
-        
-        <div class="spinner" id='spinner'></div>
-        <div class="emscripten" id="status">Downloading...</div>
+	
+	<div class ="container">
+	
+		<div id="header">
+			<a id="logo" href="https://www.raylib.com"></a>
+			
+			<div class="spinner" id='spinner'></div>
+			<div class="emscripten" id="status">Downloading...</div>
 
-        <div class="emscripten">
-          <progress value="0" max="100" id="progress" hidden=1></progress>
-        </div>
-    </div>
+			<div class="emscripten">
+			  <progress value="0" max="100" id="progress" hidden=1></progress>
+			</div>
+		</div>
+		
+		<div class="emscripten_border">
+		  <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()" tabindex=-1></canvas>
+		</div>
+	
+	</div>
     
-    <div class="emscripten_border">
-      <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()" tabindex=-1></canvas>
-    </div>
-    
-    <textarea id="output" rows="8"></textarea>
+    <!--<textarea id="output" rows="8"></textarea>-->
 
     <script type='text/javascript' src="https://cdn.jsdelivr.net/gh/eligrey/FileSaver.js/dist/FileSaver.min.js"> </script>
     <script type='text/javascript'>

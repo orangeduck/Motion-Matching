@@ -625,7 +625,8 @@ void simulation_positions_update(
     
     vec3 position_prev = position;
 
-    position = eydt*((j1*dt) / y) + dt*desired_velocity + position;
+    position = eydt*(((-j1)/(y*y)) + ((-j0 - j1*dt)/y)) + 
+        (j1/(y*y)) + j0/y + desired_velocity * dt + position_prev;
     velocity = eydt*(j0 + j1*dt) + desired_velocity;
     acceleration = eydt*(acceleration - j1*y*dt);
     

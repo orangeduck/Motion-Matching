@@ -40,9 +40,14 @@ static inline quat operator-(quat q)
     return quat(-q.w, -q.x, -q.y, -q.z);
 }
 
+static inline float quat_length(quat q)
+{
+    return sqrtf(q.w*q.w + q.x*q.x + q.y*q.y + q.z*q.z);
+}
+
 static inline quat quat_normalize(quat q, const float eps=1e-8f)
 {
-    return q / (sqrtf(q.w*q.w + q.x*q.x + q.y*q.y + q.z*q.z) + eps);
+    return q / (quat_length(q) + eps);
 }
 
 static inline quat quat_inv(quat q)
@@ -240,5 +245,55 @@ static inline quat quat_between(vec3 p, vec3 q)
         c.x, 
         c.y, 
         c.z));
+}
+
+static inline quat quat_from_cols(vec3 c0, vec3 c1, vec3 c2)
+{
+    if (c2.z < 0.0f)
+    {
+        if (c0.x > c1.y)
+        {
+            return quat_normalize(quat(
+                c1.z-c2.y, 
+                1.0f + c0.x - c1.y - c2.z, 
+                c0.y+c1.x, 
+                c2.x+c0.z));
+        }
+        else
+        {
+            return quat_normalize(quat(
+                c2.x-c0.z, 
+                c0.y+c1.x, 
+                1 - c0.x + c1.y - c2.z, 
+                c1.z+c2.y));
+        }
+    }
+    else
+    {
+        if (c0.x < -c1.y)
+        {
+            return quat_normalize(quat(
+                c0.y-c1.x, 
+                c2.x+c0.z, 
+                c1.z+c2.y, 
+                1.0f - c0.x - c1.y + c2.z));
+        }
+        else
+        {
+            return quat_normalize(quat(
+                1.0f + c0.x + c1.y + c2.z, 
+                c1.z-c2.y, 
+                c2.x-c0.z, 
+                c0.y-c1.x));
+        }
+    }
+}
+
+static inline quat quat_from_xform_xy(vec3 x, vec3 y)
+{
+    vec3 c2 = normalize(cross(x, y));
+    vec3 c1 = normalize(cross(c2, x));
+    vec3 c0 = x;
+    return quat_from_cols(c0, c1, c2);
 }
 

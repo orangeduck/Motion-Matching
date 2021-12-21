@@ -416,3 +416,4 @@ with open('database.bin', 'wb') as f:
     f.write(struct.pack('II', nframes, ncontacts) + contact_states.ravel().tobytes())
 
     
+    

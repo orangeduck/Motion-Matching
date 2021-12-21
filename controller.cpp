@@ -16,6 +16,8 @@ extern "C"
 #include "array.h"
 #include "character.h"
 #include "database.h"
+#include "nnet.h"
+#include "lmm.h"
 
 #include <initializer_list>
 #include <functional>
@@ -453,8 +455,10 @@ void inertialize_pose_update(
     vec3 world_space_velocity = quat_mul_vec3(transition_dst_rotation, 
         quat_inv_mul_vec3(transition_src_rotation, bone_input_velocities(0)));
     
-    quat world_space_rotation = quat_mul(transition_dst_rotation, 
-        quat_inv_mul(transition_src_rotation, bone_input_rotations(0)));
+    // Normalize here because quat inv mul can sometimes produce 
+    // unstable returns when the two rotations are very close.
+    quat world_space_rotation = quat_normalize(quat_mul(transition_dst_rotation, 
+        quat_inv_mul(transition_src_rotation, bone_input_rotations(0))));
     
     vec3 world_space_angular_velocity = quat_mul_vec3(transition_dst_rotation, 
         quat_inv_mul_vec3(transition_src_rotation, bone_input_angular_velocities(0)));
@@ -1272,11 +1276,25 @@ int main(void)
         feature_weight_hip_velocity,
         feature_weight_trajectory_positions,
         feature_weight_trajectory_directions);
+        
+    database_save_matching_features(db, "./resources/features.bin");
    
     // Pose & Inertializer Data
     
     int frame_index = db.range_starts(0);
     float inertialize_blending_halflife = 0.1f;
+
+    array1d<vec3> curr_bone_positions = db.bone_positions(frame_index);
+    array1d<vec3> curr_bone_velocities = db.bone_velocities(frame_index);
+    array1d<quat> curr_bone_rotations = db.bone_rotations(frame_index);
+    array1d<vec3> curr_bone_angular_velocities = db.bone_angular_velocities(frame_index);
+    array1d<bool> curr_bone_contacts = db.contact_states(frame_index);
+
+    array1d<vec3> trns_bone_positions = db.bone_positions(frame_index);
+    array1d<vec3> trns_bone_velocities = db.bone_velocities(frame_index);
+    array1d<quat> trns_bone_rotations = db.bone_rotations(frame_index);
+    array1d<vec3> trns_bone_angular_velocities = db.bone_angular_velocities(frame_index);
+    array1d<bool> trns_bone_contacts = db.contact_states(frame_index);
 
     array1d<vec3> bone_positions = db.bone_positions(frame_index);
     array1d<vec3> bone_velocities = db.bone_velocities(frame_index);
@@ -1400,7 +1418,7 @@ int main(void)
     
     bool ik_enabled = true;
     float ik_max_length_buffer = 0.015f;
-    float ik_foot_height = 0.03f;
+    float ik_foot_height = 0.02f;
     float ik_toe_length = 0.15f;
     float ik_unlock_radius = 0.2f;
     float ik_blending_halflife = 0.1f;
@@ -1455,6 +1473,25 @@ int main(void)
     
     array1d<vec3> adjusted_bone_positions = bone_positions;
     array1d<quat> adjusted_bone_rotations = bone_rotations;
+    
+    // Learned Motion Matching
+    
+    bool lmm_enabled = true;
+    
+    nnet decompressor, stepper, projector;    
+    nnet_load(decompressor, "./resources/decompressor.bin");
+    nnet_load(stepper, "./resources/stepper.bin");
+    nnet_load(projector, "./resources/projector.bin");
+
+    nnet_evaluation decompressor_evaluation, stepper_evaluation, projector_evaluation;
+    decompressor_evaluation.resize(decompressor);
+    stepper_evaluation.resize(stepper);
+    projector_evaluation.resize(projector);
+
+    array1d<float> features_proj = db.features(frame_index);
+    array1d<float> features_curr = db.features(frame_index);
+    array1d<float> latent_proj(32); latent_proj.zero();
+    array1d<float> latent_curr(32); latent_curr.zero();
     
     // Go
 
@@ -1576,14 +1613,17 @@ int main(void)
         // actually required however for visualization purposes it
         // can be nice to do it every frame
         array1d<float> query(db.nfeatures());
-        
+                
         // Compute the features of the query vector
+
+        slice1d<float> query_features = lmm_enabled ? slice1d<float>(features_curr) : db.features(frame_index);
+
         int offset = 0;
-        query_copy_denormalized_feature(query, offset, 3, db.features(frame_index), db.features_offset, db.features_scale); // Left Foot Position
-        query_copy_denormalized_feature(query, offset, 3, db.features(frame_index), db.features_offset, db.features_scale); // Right Foot Position
-        query_copy_denormalized_feature(query, offset, 3, db.features(frame_index), db.features_offset, db.features_scale); // Left Foot Velocity
-        query_copy_denormalized_feature(query, offset, 3, db.features(frame_index), db.features_offset, db.features_scale); // Right Foot Velocity
-        query_copy_denormalized_feature(query, offset, 3, db.features(frame_index), db.features_offset, db.features_scale); // Hip Velocity
+        query_copy_denormalized_feature(query, offset, 3, query_features, db.features_offset, db.features_scale); // Left Foot Position
+        query_copy_denormalized_feature(query, offset, 3, query_features, db.features_offset, db.features_scale); // Right Foot Position
+        query_copy_denormalized_feature(query, offset, 3, query_features, db.features_offset, db.features_scale); // Left Foot Velocity
+        query_copy_denormalized_feature(query, offset, 3, query_features, db.features_offset, db.features_scale); // Right Foot Velocity
+        query_copy_denormalized_feature(query, offset, 3, query_features, db.features_offset, db.features_scale); // Hip Velocity
         query_compute_trajectory_position_feature(query, offset, bone_positions(0), bone_rotations(0), trajectory_positions);
         query_compute_trajectory_direction_feature(query, offset, bone_rotations(0), trajectory_rotations);
         
@@ -1595,52 +1635,165 @@ int main(void)
         // Do we need to search?
         if (force_search || search_timer <= 0.0f || end_of_anim)
         {
-            // Search
-            int best_index = end_of_anim ? -1 : frame_index;
-            float best_cost = FLT_MAX;
-            
-            database_search(
-                best_index,
-                best_cost,
-                db,
-                query);
-            
-            // Transition if better frame found
-            if (best_index != frame_index)
+            if (lmm_enabled)
             {
-                inertialize_pose_transition(
-                    bone_offset_positions,
-                    bone_offset_velocities,
-                    bone_offset_rotations,
-                    bone_offset_angular_velocities,
-                    transition_src_position,
-                    transition_src_rotation,
-                    transition_dst_position,
-                    transition_dst_rotation,
-                    bone_positions(0),
-                    bone_velocities(0),
-                    bone_rotations(0),
-                    bone_angular_velocities(0),
-                    db.bone_positions(frame_index),
-                    db.bone_velocities(frame_index),
-                    db.bone_rotations(frame_index),
-                    db.bone_angular_velocities(frame_index),
-                    db.bone_positions(best_index),
-                    db.bone_velocities(best_index),
-                    db.bone_rotations(best_index),
-                    db.bone_angular_velocities(best_index));
+                // Project query onto nearest feature vector
                 
-                frame_index = best_index;
+                float best_cost = FLT_MAX;
+                bool transition = false;
+                
+                projector_evaluate(
+                    transition,
+                    best_cost,
+                    features_proj,
+                    latent_proj,
+                    projector_evaluation,
+                    query,
+                    db.features_offset,
+                    db.features_scale,
+                    features_curr,
+                    projector);
+                
+                // If projection is sufficiently different from current
+                if (transition)
+                {   
+                    // Evaluate pose for projected features
+                    decompressor_evaluate(
+                        trns_bone_positions,
+                        trns_bone_velocities,
+                        trns_bone_rotations,
+                        trns_bone_angular_velocities,
+                        trns_bone_contacts,
+                        decompressor_evaluation,
+                        features_proj,
+                        latent_proj,
+                        curr_bone_positions(0),
+                        curr_bone_rotations(0),
+                        decompressor,
+                        dt);
+                    
+                    // Transition inertializer to this pose
+                    inertialize_pose_transition(
+                        bone_offset_positions,
+                        bone_offset_velocities,
+                        bone_offset_rotations,
+                        bone_offset_angular_velocities,
+                        transition_src_position,
+                        transition_src_rotation,
+                        transition_dst_position,
+                        transition_dst_rotation,
+                        bone_positions(0),
+                        bone_velocities(0),
+                        bone_rotations(0),
+                        bone_angular_velocities(0),
+                        curr_bone_positions,
+                        curr_bone_velocities,
+                        curr_bone_rotations,
+                        curr_bone_angular_velocities,
+                        trns_bone_positions,
+                        trns_bone_velocities,
+                        trns_bone_rotations,
+                        trns_bone_angular_velocities);
+                    
+                    // Update current features and latents
+                    features_curr = features_proj;
+                    latent_curr = latent_proj;
+                }
             }
-            
+            else
+            {
+                // Search
+                
+                int best_index = end_of_anim ? -1 : frame_index;
+                float best_cost = FLT_MAX;
+                
+                database_search(
+                    best_index,
+                    best_cost,
+                    db,
+                    query);
+                
+                // Transition if better frame found
+                
+                if (best_index != frame_index)
+                {
+                    trns_bone_positions = db.bone_positions(best_index);
+                    trns_bone_velocities = db.bone_velocities(best_index);
+                    trns_bone_rotations = db.bone_rotations(best_index);
+                    trns_bone_angular_velocities = db.bone_angular_velocities(best_index);
+                    
+                    inertialize_pose_transition(
+                        bone_offset_positions,
+                        bone_offset_velocities,
+                        bone_offset_rotations,
+                        bone_offset_angular_velocities,
+                        transition_src_position,
+                        transition_src_rotation,
+                        transition_dst_position,
+                        transition_dst_rotation,
+                        bone_positions(0),
+                        bone_velocities(0),
+                        bone_rotations(0),
+                        bone_angular_velocities(0),
+                        curr_bone_positions,
+                        curr_bone_velocities,
+                        curr_bone_rotations,
+                        curr_bone_angular_velocities,
+                        trns_bone_positions,
+                        trns_bone_velocities,
+                        trns_bone_rotations,
+                        trns_bone_angular_velocities);
+                    
+                    frame_index = best_index;
+                }
+            }
+
             // Reset search timer
             search_timer = search_time;
         }
         
-        // Tick frame and update inertializer
-        
-        frame_index++; // Assumes dt is fixed to 60fps
+        // Tick down search timer
         search_timer -= dt;
+
+        if (lmm_enabled)
+        {
+            // Update features and latents
+            stepper_evaluate(
+                features_curr,
+                latent_curr,
+                stepper_evaluation,
+                stepper,
+                dt);
+                
+            // Decompress next pose
+            decompressor_evaluate(
+                curr_bone_positions,
+                curr_bone_velocities,
+                curr_bone_rotations,
+                curr_bone_angular_velocities,
+                curr_bone_contacts,
+                decompressor_evaluation,
+                features_curr,
+                latent_curr,
+                curr_bone_positions(0),
+                curr_bone_rotations(0),
+                decompressor,
+                dt);
+        }
+        else
+        {
+            // Tick frame
+            frame_index++; // Assumes dt is fixed to 60fps
+            
+            // Look-up Next Pose
+            curr_bone_positions = db.bone_positions(frame_index);
+            curr_bone_velocities = db.bone_velocities(frame_index);
+            curr_bone_rotations = db.bone_rotations(frame_index);
+            curr_bone_angular_velocities = db.bone_angular_velocities(frame_index);
+            curr_bone_contacts = db.contact_states(frame_index);
+        }
+        
+        // Update inertializer
         
         inertialize_pose_update(
             bone_positions,
@@ -1651,10 +1804,10 @@ int main(void)
             bone_offset_velocities,
             bone_offset_rotations,
             bone_offset_angular_velocities,
-            db.bone_positions(frame_index),
-            db.bone_velocities(frame_index),
-            db.bone_rotations(frame_index),
-            db.bone_angular_velocities(frame_index),
+            curr_bone_positions,
+            curr_bone_velocities,
+            curr_bone_rotations,
+            curr_bone_angular_velocities,
             transition_src_position,
             transition_src_rotation,
             transition_dst_position,
@@ -1838,7 +1991,7 @@ int main(void)
                     contact_offset_positions(i),
                     contact_offset_velocities(i),
                     global_bone_positions(toe_bone),
-                    db.contact_states(frame_index, i),
+                    curr_bone_contacts(i),
                     ik_unlock_radius,
                     ik_foot_height,
                     ik_blending_halflife,
@@ -2024,7 +2177,7 @@ int main(void)
         
         // Draw matched features
         
-        array1d<float> current_features = db.features(frame_index);
+        array1d<float> current_features = lmm_enabled ? slice1d<float>(features_curr) : db.features(frame_index);
         denormalize_features(current_features, db.features_offset, db.features_scale);        
         draw_features(current_features, bone_positions(0), bone_rotations(0), MAROON);
         
@@ -2112,7 +2265,18 @@ int main(void)
         
         //---------
         
-        float ui_ctrl_hei = 330;
+        float ui_lmm_hei = 330;
+        
+        GuiGroupBox((Rectangle){ 970, ui_lmm_hei, 290, 40 }, "learned motion matching");
+        
+        lmm_enabled = GuiCheckBox(
+            (Rectangle){ 1000, ui_lmm_hei + 10, 20, 20 }, 
+            "enabled",
+            lmm_enabled);
+        
+        //---------
+        
+        float ui_ctrl_hei = 380;
         
         GuiGroupBox((Rectangle){ 1010, ui_ctrl_hei, 250, 140 }, "controls");
         
@@ -2122,6 +2286,8 @@ int main(void)
         GuiLabel((Rectangle){ 1030, ui_ctrl_hei +  70, 200, 20 }, "Left Shoulder - Zoom In");
         GuiLabel((Rectangle){ 1030, ui_ctrl_hei +  90, 200, 20 }, "Right Shoulder - Zoom Out");
         GuiLabel((Rectangle){ 1030, ui_ctrl_hei + 110, 200, 20 }, "A Button - Walk");
+        
+
         
         //---------
         

@@ -3,3 +3,8 @@ controller.data
 controller.js
 controller.html
 controller.wasm
+*__pycache__*
+*.png
+*.bvh
+*.log
+resources/runs*

@@ -1,14 +1,13 @@
 import numpy as np
 
 def _fast_cross(a, b):
-    o = np.empty(np.broadcast(a, b).shape)
-    o[...,0] = a[...,1]*b[...,2] - a[...,2]*b[...,1]
-    o[...,1] = a[...,2]*b[...,0] - a[...,0]*b[...,2]
-    o[...,2] = a[...,0]*b[...,1] - a[...,1]*b[...,0]
-    return o
+    return np.concatenate([
+        a[...,1:2]*b[...,2:3] - a[...,2:3]*b[...,1:2],
+        a[...,2:3]*b[...,0:1] - a[...,0:1]*b[...,2:3],
+        a[...,0:1]*b[...,1:2] - a[...,1:2]*b[...,0:1]], axis=-1)
 
-def eye(shape):
-    return np.ones(list(shape) + [4], dtype=np.float32) * np.asarray([1, 0, 0, 0], dtype=np.float32)
+def eye(shape, dtype=np.float32):
+    return np.ones(list(shape) + [4], dtype=dtype) * np.asarray([1, 0, 0, 0], dtype=dtype)
 
 def length(x):
     return np.sqrt(np.sum(x * x, axis=-1))
@@ -39,6 +38,23 @@ def to_xform(x):
         np.concatenate([xy + wz, 1.0 - (xx + zz), yz - wx], axis=-1)[...,np.newaxis,:],
         np.concatenate([xz - wy, yz + wx, 1.0 - (xx + yy)], axis=-1)[...,np.newaxis,:],
     ], axis=-2)
+    
+def to_xform_xy(x):
+
+    qw, qx, qy, qz = x[...,0:1], x[...,1:2], x[...,2:3], x[...,3:4]
+    
+    x2, y2, z2 = qx + qx, qy + qy, qz + qz
+    xx, yy, wx = qx * x2, qy * y2, qw * x2
+    xy, yz, wy = qx * y2, qy * z2, qw * y2
+    xz, zz, wz = qx * z2, qz * z2, qw * z2
+    
+    return np.concatenate([
+        np.concatenate([1.0 - (yy + zz), xy - wz], axis=-1)[...,np.newaxis,:],
+        np.concatenate([xy + wz, 1.0 - (xx + zz)], axis=-1)[...,np.newaxis,:],
+        np.concatenate([xz - wy, yz + wx], axis=-1)[...,np.newaxis,:],
+    ], axis=-2)
+
+    
 
 def from_euler(e, order='zyx'):
     axis = {
@@ -53,7 +69,9 @@ def from_euler(e, order='zyx'):
     return mul(q0, mul(q1, q2))
 
 def from_xform(ts, eps=1e-10):
-
+    
+    # TODO: Update to use Mike Day's version
+    
     qs = np.empty_like(ts[...,:1,0].repeat(4, axis=-1))
 
     t = ts[...,0,0] + ts[...,1,1] + ts[...,2,2]
@@ -93,7 +111,20 @@ def from_xform(ts, eps=1e-10):
         (s2 * 0.25)[...,np.newaxis]
     ], axis=-1), qs)
     
-    return qs
+    return normalize(qs)
+    
+def from_xform_xy(x):
+
+    c2 = _fast_cross(x[...,0], x[...,1])
+    c2 = c2 / np.sqrt(np.sum(np.square(c2), axis=-1))[...,np.newaxis]
+    c1 = _fast_cross(c2, x[...,0])
+    c1 = c1 / np.sqrt(np.sum(np.square(c1), axis=-1))[...,np.newaxis]
+    c0 = x[...,0]
+    
+    return from_xform(np.concatenate([
+        c0[...,np.newaxis], 
+        c1[...,np.newaxis], 
+        c2[...,np.newaxis]], axis=-1))
 
 def inv(q):
     return np.asarray([1, -1, -1, -1], dtype=np.float32) * q
@@ -191,4 +222,29 @@ def fk_vel(lrot, lpos, lvel, lang, parents):
         np.concatenate(gp, axis=-2),
         np.concatenate(gv, axis=-2),
         np.concatenate(ga, axis=-2))
+        
+        
+def to_euler(x, order='xyz'):
+    
+    q0 = x[...,0:1]
+    q1 = x[...,1:2]
+    q2 = x[...,2:3]
+    q3 = x[...,3:4]
+    
+    if order == 'xyz':
+    
+        return np.concatenate([
+            np.arctan2(2 * (q0 * q1 + q2 * q3), 1 - 2 * (q1 * q1 + q2 * q2)),
+            np.arcsin((2 * (q0 * q2 - q3 * q1)).clip(-1,1)),
+            np.arctan2(2 * (q0 * q3 + q1 * q2), 1 - 2 * (q2 * q2 + q3 * q3))], axis=-1)
+            
+    elif order == 'yzx':
+    
+        return np.concatenate([
+            np.arctan2(2 * (q1 * q0 - q2 * q3), -q1 * q1 + q2 * q2 - q3 * q3 + q0 * q0),
+            np.arctan2(2 * (q2 * q0 - q1 * q3),  q1 * q1 - q2 * q2 - q3 * q3 + q0 * q0),
+            np.arcsin((2 * (q1 * q2 + q3 * q0)).clip(-1,1))], axis=-1)
+            
+    else:
+        raise NotImplementedError('Cannot convert from ordering %s' % order)
         

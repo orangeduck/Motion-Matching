@@ -264,7 +264,7 @@ static inline quat quat_from_cols(vec3 c0, vec3 c1, vec3 c2)
             return quat_normalize(quat(
                 c2.x-c0.z, 
                 c0.y+c1.x, 
-                1 - c0.x + c1.y - c2.z, 
+                1.0f - c0.x + c1.y - c2.z, 
                 c1.z+c2.y));
         }
     }

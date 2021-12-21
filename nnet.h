@@ -54,7 +54,7 @@ void nnet_load(nnet& nn, const char* filename)
 
 //--------------------------------------
 
-void nnet_layer_normalize(
+static inline void nnet_layer_normalize(
     slice1d<float> output,
     const slice1d<float> mean,
     const slice1d<float> std)
@@ -65,7 +65,7 @@ void nnet_layer_normalize(
     }
 }
 
-void nnet_layer_denormalize(
+static inline void nnet_layer_denormalize(
     slice1d<float> output,
     const slice1d<float> mean,
     const slice1d<float> std)
@@ -80,7 +80,7 @@ void nnet_layer_denormalize(
 // matmul on the CPU. It takes advantage of activations set
 // to zero due to relu and compiles well to SIMD. It's important
 // for performance that the pointers are labelled restrict.
-void nnet_layer_linear(
+static inline void nnet_layer_linear(
     slice1d<float> output,
     const slice1d<float> input,
     const slice2d<float> weights,
@@ -91,7 +91,7 @@ void nnet_layer_linear(
     {
         output(j) = biases(j);
     }
-  
+    
     // Accumulate in output the result of matmul
     for (int i = 0; i < input.size; i++)
     {
@@ -107,7 +107,7 @@ void nnet_layer_linear(
     }
 }
 
-void nnet_layer_relu(slice1d<float> output)
+static inline void nnet_layer_relu(slice1d<float> output)
 {
     for (int i = 0; i < output.size; i++)
     {

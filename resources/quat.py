@@ -68,50 +68,33 @@ def from_euler(e, order='zyx'):
 
     return mul(q0, mul(q1, q2))
 
-def from_xform(ts, eps=1e-10):
+def from_xform(ts):
     
-    # TODO: Update to use Mike Day's version
-    
-    qs = np.empty_like(ts[...,:1,0].repeat(4, axis=-1))
+    return normalize(
+        np.where((ts[...,2,2] < 0.0)[...,np.newaxis],
+            np.where((ts[...,0,0] >  ts[...,1,1])[...,np.newaxis],
+                np.concatenate([
+                    (ts[...,2,1]-ts[...,1,2])[...,np.newaxis], 
+                    (1.0 + ts[...,0,0] - ts[...,1,1] - ts[...,2,2])[...,np.newaxis], 
+                    (ts[...,1,0]+ts[...,0,1])[...,np.newaxis], 
+                    (ts[...,0,2]+ts[...,2,0])[...,np.newaxis]], axis=-1),
+                np.concatenate([
+                    (ts[...,0,2]-ts[...,2,0])[...,np.newaxis], 
+                    (ts[...,1,0]+ts[...,0,1])[...,np.newaxis], 
+                    (1.0 - ts[...,0,0] + ts[...,1,1] - ts[...,2,2])[...,np.newaxis], 
+                    (ts[...,2,1]+ts[...,1,2])[...,np.newaxis]], axis=-1)),
+            np.where((ts[...,0,0] < -ts[...,1,1])[...,np.newaxis],
+                np.concatenate([
+                    (ts[...,1,0]-ts[...,0,1])[...,np.newaxis], 
+                    (ts[...,0,2]+ts[...,2,0])[...,np.newaxis], 
+                    (ts[...,2,1]+ts[...,1,2])[...,np.newaxis], 
+                    (1.0 - ts[...,0,0] - ts[...,1,1] + ts[...,2,2])[...,np.newaxis]], axis=-1),
+                np.concatenate([
+                    (1.0 + ts[...,0,0] + ts[...,1,1] + ts[...,2,2])[...,np.newaxis], 
+                    (ts[...,2,1]-ts[...,1,2])[...,np.newaxis], 
+                    (ts[...,0,2]-ts[...,2,0])[...,np.newaxis], 
+                    (ts[...,1,0]-ts[...,0,1])[...,np.newaxis]], axis=-1))))
 
-    t = ts[...,0,0] + ts[...,1,1] + ts[...,2,2]
-    
-    s = 0.5 / np.sqrt(np.maximum(t + 1, eps))
-    qs = np.where((t > 0)[...,np.newaxis].repeat(4, axis=-1), np.concatenate([
-        (0.25 / s)[...,np.newaxis],
-        (s * (ts[...,2,1] - ts[...,1,2]))[...,np.newaxis],
-        (s * (ts[...,0,2] - ts[...,2,0]))[...,np.newaxis],
-        (s * (ts[...,1,0] - ts[...,0,1]))[...,np.newaxis]
-    ], axis=-1), qs)
-    
-    c0 = (ts[...,0,0] > ts[...,1,1]) & (ts[...,0,0] > ts[...,2,2])
-    s0 = 2.0 * np.sqrt(np.maximum(1.0 + ts[...,0,0] - ts[...,1,1] - ts[...,2,2], eps))
-    qs = np.where(((t <= 0) & c0)[...,np.newaxis].repeat(4, axis=-1), np.concatenate([
-        ((ts[...,2,1] - ts[...,1,2]) / s0)[...,np.newaxis],
-        (s0 * 0.25)[...,np.newaxis],
-        ((ts[...,0,1] + ts[...,1,0]) / s0)[...,np.newaxis],
-        ((ts[...,0,2] + ts[...,2,0]) / s0)[...,np.newaxis]
-    ], axis=-1), qs)
-    
-    c1 = (~c0) & (ts[...,1,1] > ts[...,2,2])
-    s1 = 2.0 * np.sqrt(np.maximum(1.0 + ts[...,1,1] - ts[...,0,0] - ts[...,2,2], eps))
-    qs = np.where(((t <= 0) & c1)[...,np.newaxis].repeat(4, axis=-1), np.concatenate([
-        ((ts[...,0,2] - ts[...,2,0]) / s1)[...,np.newaxis],
-        ((ts[...,0,1] + ts[...,1,0]) / s1)[...,np.newaxis],
-        (s1 * 0.25)[...,np.newaxis],
-        ((ts[...,1,2] + ts[...,2,1]) / s1)[...,np.newaxis]
-    ], axis=-1), qs)
-    
-    c2 = (~c0) & (~c1)
-    s2 = 2.0 * np.sqrt(np.maximum(1.0 + ts[...,2,2] - ts[...,0,0] - ts[...,1,1], eps))
-    qs = np.where(((t <= 0) & c2)[...,np.newaxis].repeat(4, axis=-1), np.concatenate([
-        ((ts[...,1,0] - ts[...,0,1]) / s2)[...,np.newaxis],
-        ((ts[...,0,2] + ts[...,2,0]) / s2)[...,np.newaxis],
-        ((ts[...,1,2] + ts[...,2,1]) / s2)[...,np.newaxis],
-        (s2 * 0.25)[...,np.newaxis]
-    ], axis=-1), qs)
-    
-    return normalize(qs)
     
 def from_xform_xy(x):
 

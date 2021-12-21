@@ -14,15 +14,16 @@ def mul_vec(x, v):
 
 def from_xy(x):
 
-    r2 = _fast_cross(x[...,0], x[...,1])
-    r2 = r2 / torch.sqrt(torch.sum(torch.square(r2), dim=-1))[...,None]
-    r1 = _fast_cross(r2, x[...,0])
-    r1 = r1 / torch.sqrt(torch.sum(torch.square(r1), dim=-1))[...,None]
+    c2 = _fast_cross(x[...,0], x[...,1])
+    c2 = c2 / torch.sqrt(torch.sum(torch.square(c2), dim=-1))[...,None]
+    c1 = _fast_cross(c2, x[...,0])
+    c1 = c1 / torch.sqrt(torch.sum(torch.square(c1), dim=-1))[...,None]
+    c0 = x[...,0]
     
     return torch.cat([
-        x[...,0:1], 
-        r1[...,None], 
-        r2[...,None]], dim=-1)
+        c0[...,None], 
+        c1[...,None], 
+        c2[...,None]], dim=-1)
 
 def fk_vel(lrot, lpos, lvel, lang, parents):
     

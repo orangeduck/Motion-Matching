@@ -65,6 +65,7 @@ if __name__ == '__main__':
     
     np.random.seed(seed)
     torch.manual_seed(seed)
+    torch.set_num_threads(1)
     
     # Compute means/stds
     

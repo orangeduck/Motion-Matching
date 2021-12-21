@@ -71,62 +71,46 @@ def from_euler(e, order='zyx'):
 
     return mul(q0, mul(q1, q2))
 
-def from_xform(ts, eps=1e-10):
+def from_xform(ts):
 
-    qs = torch.empty(ts.shape[:-2] + (4,), dtype=torch.float32)
+    return normalize(
+        torch.where((ts[...,2,2] < 0.0)[...,None],
+            torch.where((ts[...,0,0] >  ts[...,1,1])[...,None],
+                torch.cat([
+                    (ts[...,2,1]-ts[...,1,2])[...,None], 
+                    (1.0 + ts[...,0,0] - ts[...,1,1] - ts[...,2,2])[...,None], 
+                    (ts[...,1,0]+ts[...,0,1])[...,None], 
+                    (ts[...,0,2]+ts[...,2,0])[...,None]], dim=-1),
+                torch.cat([
+                    (ts[...,0,2]-ts[...,2,0])[...,None], 
+                    (ts[...,1,0]+ts[...,0,1])[...,None], 
+                    (1.0 - ts[...,0,0] + ts[...,1,1] - ts[...,2,2])[...,None], 
+                    (ts[...,2,1]+ts[...,1,2])[...,None]], dim=-1)),
+            torch.where((ts[...,0,0] < -ts[...,1,1])[...,None],
+                torch.cat([
+                    (ts[...,1,0]-ts[...,0,1])[...,None], 
+                    (ts[...,0,2]+ts[...,2,0])[...,None], 
+                    (ts[...,2,1]+ts[...,1,2])[...,None], 
+                    (1.0 - ts[...,0,0] - ts[...,1,1] + ts[...,2,2])[...,None]], dim=-1),
+                torch.cat([
+                    (1.0 + ts[...,0,0] + ts[...,1,1] + ts[...,2,2])[...,None], 
+                    (ts[...,2,1]-ts[...,1,2])[...,None], 
+                    (ts[...,0,2]-ts[...,2,0])[...,None], 
+                    (ts[...,1,0]-ts[...,0,1])[...,None]], dim=-1))))
 
-    t = ts[...,0,0] + ts[...,1,1] + ts[...,2,2]
-    
-    s = 0.5 / torch.sqrt(torch.clamp(t + 1, min=eps))
-    qs = torch.where((t > 0)[...,None], torch.cat([
-        (0.25 / s)[...,None],
-        (s * (ts[...,2,1] - ts[...,1,2]))[...,None],
-        (s * (ts[...,0,2] - ts[...,2,0]))[...,None],
-        (s * (ts[...,1,0] - ts[...,0,1]))[...,None]
-    ], dim=-1), qs)
-    
-    c0 = (ts[...,0,0] > ts[...,1,1]) & (ts[...,0,0] > ts[...,2,2])
-    s0 = 2.0 * torch.sqrt(torch.clamp(1.0 + ts[...,0,0] - ts[...,1,1] - ts[...,2,2], min=eps))
-    qs = torch.where(((t <= 0) & c0)[...,None], torch.cat([
-        ((ts[...,2,1] - ts[...,1,2]) / s0)[...,None],
-        (s0 * 0.25)[...,None],
-        ((ts[...,0,1] + ts[...,1,0]) / s0)[...,None],
-        ((ts[...,0,2] + ts[...,2,0]) / s0)[...,None]
-    ], dim=-1), qs)
-    
-    c1 = (~c0) & (ts[...,1,1] > ts[...,2,2])
-    s1 = 2.0 * torch.sqrt(torch.clamp(1.0 + ts[...,1,1] - ts[...,0,0] - ts[...,2,2], min=eps))
-    qs = torch.where(((t <= 0) & c1)[...,None], torch.cat([
-        ((ts[...,0,2] - ts[...,2,0]) / s1)[...,None],
-        ((ts[...,0,1] + ts[...,1,0]) / s1)[...,None],
-        (s1 * 0.25)[...,None],
-        ((ts[...,1,2] + ts[...,2,1]) / s1)[...,None]
-    ], dim=-1), qs)
-    
-    c2 = (~c0) & (~c1)
-    s2 = 2.0 * torch.sqrt(torch.clamp(1.0 + ts[...,2,2] - ts[...,0,0] - ts[...,1,1], min=eps))
-    qs = torch.where(((t <= 0) & c2)[...,None], torch.cat([
-        ((ts[...,1,0] - ts[...,0,1]) / s2)[...,None],
-        ((ts[...,0,2] + ts[...,2,0]) / s2)[...,None],
-        ((ts[...,1,2] + ts[...,2,1]) / s2)[...,None],
-        (s2 * 0.25)[...,None]
-    ], dim=-1), qs)
-    
-    return normalize(qs)
 
 def from_xform_xy(x):
 
-    r2 = _fast_cross(x[...,0], x[...,1])
-    r2 = r2 / torch.sqrt(torch.sum(torch.square(r2), dim=-1))[...,None]
-    r1 = _fast_cross(r2, x[...,0])
-    r1 = r1 / torch.sqrt(torch.sum(torch.square(r1), dim=-1))[...,None]
+    c2 = _fast_cross(x[...,0], x[...,1])
+    c2 = c2 / torch.sqrt(torch.sum(torch.square(c2), dim=-1))[...,None]
+    c1 = _fast_cross(c2, x[...,0])
+    c1 = c1 / torch.sqrt(torch.sum(torch.square(c1), dim=-1))[...,None]
+    c0 = x[...,0]
     
-    m = torch.cat([
-        x[...,0:1], 
-        r1[...,None], 
-        r2[...,None]], axis=-1)
-    
-    return from_xform(m)
+    return from_xform(torch.cat([
+        c0[...,None], 
+        c1[...,None], 
+        c2[...,None]], axis=-1))
 
 def inv(q):
     return torch.as_tensor([1, -1, -1, -1], dtype=torch.float32) * q

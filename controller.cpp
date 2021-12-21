@@ -1764,7 +1764,7 @@ int main(void)
                 stepper_evaluation,
                 stepper,
                 dt);
-                
+            
             // Decompress next pose
             decompressor_evaluate(
                 curr_bone_positions,

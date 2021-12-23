@@ -26,9 +26,7 @@ class Compressor(nn.Module):
         self.linear0 = nn.Linear(input_size, hidden_size)
         self.linear1 = nn.Linear(hidden_size, hidden_size)
         self.linear2 = nn.Linear(hidden_size, hidden_size)
-        self.linear3 = nn.Linear(hidden_size, hidden_size)
-        self.linear4 = nn.Linear(hidden_size, hidden_size)
-        self.linear5 = nn.Linear(hidden_size, output_size)
+        self.linear3 = nn.Linear(hidden_size, output_size)
 
     def forward(self, x):
         nbatch, nwindow = x.shape[:2]
@@ -36,10 +34,7 @@ class Compressor(nn.Module):
         x = F.elu(self.linear0(x))
         x = F.elu(self.linear1(x))
         x = F.elu(self.linear2(x))
-        x = F.elu(self.linear2(x))
-        x = F.elu(self.linear3(x))
-        x = F.elu(self.linear4(x))
-        x = self.linear5(x)
+        x = self.linear3(x)
         return x.reshape([nbatch, nwindow, -1])
         
         
@@ -49,17 +44,13 @@ class Decompressor(nn.Module):
         super(Decompressor, self).__init__()
         
         self.linear0 = nn.Linear(input_size, hidden_size)
-        self.linear1 = nn.Linear(hidden_size, hidden_size)
-        self.linear2 = nn.Linear(hidden_size, hidden_size)
-        self.linear3 = nn.Linear(hidden_size, output_size)
+        self.linear1 = nn.Linear(hidden_size, output_size)
 
     def forward(self, x):
         nbatch, nwindow = x.shape[:2]
         x = x.reshape([nbatch * nwindow, -1])
         x = F.relu(self.linear0(x))
-        x = F.relu(self.linear1(x))
-        x = F.relu(self.linear2(x))
-        x = self.linear3(x)
+        x = self.linear1(x)
         return x.reshape([nbatch, nwindow, -1])
 
 
@@ -93,7 +84,7 @@ if __name__ == '__main__':
     seed = 1234
     batchsize = 32
     lr = 0.001
-    niter = 1000000
+    niter = 500000
     window = 2
     dt = 1.0 / 60.0
     
@@ -294,21 +285,21 @@ if __name__ == '__main__':
             Ytil = (network_decompressor(torch.cat([Xgnd, Zgnd], dim=-1)) * 
                 decompressor_std_out + decompressor_mean_out)
             
-            # Extract components
+            # Extract required components
             
             Ytil_pos = Ytil[:,:, 0*(nbones-1): 3*(nbones-1)].reshape([1, stop-start, nbones-1, 3])
             Ytil_txy = Ytil[:,:, 3*(nbones-1): 9*(nbones-1)].reshape([1, stop-start, nbones-1, 3, 2])
             Ytil_rvel = Ytil[:,:,15*(nbones-1)+0:15*(nbones-1)+3].reshape([1, stop-start, 3])
             Ytil_rang = Ytil[:,:,15*(nbones-1)+3:15*(nbones-1)+6].reshape([1, stop-start, 3])
             
-            # Convert and remove batch
+            # Convert to quat and remove batch
             
             Ytil_rot = quat.from_xform_xy(Ytil_txy[0].cpu().numpy())
             Ytil_pos = Ytil_pos[0].cpu().numpy()
             Ytil_rvel = Ytil_rvel[0].cpu().numpy()
             Ytil_rang = Ytil_rang[0].cpu().numpy()
             
-            # Compute root movement in world
+            # Integrate root displacement
             
             Ytil_rootrot = [Ygnd_rot[0,0,0].cpu().numpy()]
             Ytil_rootpos = [Ygnd_pos[0,0,0].cpu().numpy()]
@@ -379,7 +370,7 @@ if __name__ == '__main__':
 
             plt.close()
     
-    # Build potential batches respecting window size
+    # Build batches respecting window size
     
     indices = []
     for i in range(nframes - window):
@@ -473,7 +464,7 @@ if __name__ == '__main__':
         Qtil_xfm, Qtil_pos, Qtil_vel, Qtil_ang = txform.fk_vel(
             Ytil_xfm, Ytil_pos, Ytil_vel, Ytil_ang, parents)
         
-        # Compute Deltas
+        # Compute deltas
         
         Ygnd_dpos = (Ygnd_pos[:,1:] - Ygnd_pos[:,:-1]) / dt
         Ygnd_drot = (Ygnd_txy[:,1:] - Ygnd_txy[:,:-1]) / dt
@@ -487,7 +478,7 @@ if __name__ == '__main__':
         
         Zdgnd = (Zgnd[:,1:] - Zgnd[:,:-1]) / dt
         
-        # Compute Losses
+        # Compute losses
         
         loss_loc_pos = torch.mean(75.0 * torch.abs(Ygnd_pos - Ytil_pos))
         loss_loc_txy = torch.mean(10.0 * torch.abs(Ygnd_txy - Ytil_txy))
@@ -539,11 +530,6 @@ if __name__ == '__main__':
     
         # Logging
         
-        if rolling_loss is None:
-            rolling_loss = loss.item()
-        else:
-            rolling_loss = rolling_loss * 0.99 + loss.item() * 0.01
-        
         writer.add_scalar('decompressor/loss', loss.item(), i)
         
         writer.add_scalars('decompressor/loss_terms', {
@@ -572,6 +558,11 @@ if __name__ == '__main__':
             'std': Zgnd.std().item(),
         }, i)
         
+        if rolling_loss is None:
+            rolling_loss = loss.item()
+        else:
+            rolling_loss = rolling_loss * 0.99 + loss.item() * 0.01
+        
         if i % 10 == 0:
             sys.stdout.write('\rIter: %7i Loss: %5.3f' % (i, rolling_loss))
         
@@ -580,9 +571,7 @@ if __name__ == '__main__':
             save_compressed_database()
             save_network('decompressor.bin', [
                 network_decompressor.linear0, 
-                network_decompressor.linear1, 
-                network_decompressor.linear2, 
-                network_decompressor.linear3],
+                network_decompressor.linear1],
                 decompressor_mean_in,
                 decompressor_std_in,
                 decompressor_mean_out,

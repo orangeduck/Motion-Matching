@@ -1476,7 +1476,7 @@ int main(void)
     
     // Learned Motion Matching
     
-    bool lmm_enabled = true;
+    bool lmm_enabled = false;
     
     nnet decompressor, stepper, projector;    
     nnet_load(decompressor, "./resources/decompressor.bin");

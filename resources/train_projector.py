@@ -29,18 +29,14 @@ class Projector(nn.Module):
         self.linear1 = nn.Linear(hidden_size, hidden_size)
         self.linear2 = nn.Linear(hidden_size, hidden_size)
         self.linear3 = nn.Linear(hidden_size, hidden_size)
-        self.linear4 = nn.Linear(hidden_size, hidden_size)
-        self.linear5 = nn.Linear(hidden_size, hidden_size)
-        self.linear6 = nn.Linear(hidden_size, output_size)
+        self.linear4 = nn.Linear(hidden_size, output_size)
 
     def forward(self, x):
         x = F.relu(self.linear0(x))
         x = F.relu(self.linear1(x))
         x = F.relu(self.linear2(x))
         x = F.relu(self.linear3(x))
-        x = F.relu(self.linear4(x))
-        x = F.relu(self.linear5(x))
-        return self.linear6(x)
+        return self.linear4(x)
 
 # Training procedure
 
@@ -65,7 +61,7 @@ if __name__ == '__main__':
     seed = 1234
     batchsize = 32
     lr = 0.001
-    niter = 1000000
+    niter = 500000
     
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -219,8 +215,8 @@ if __name__ == '__main__':
         # Compute Losses
         
         loss_xval = torch.mean(1.0 * torch.abs(Xgnd - Xtil))
-        loss_zval = torch.mean(9.0 * torch.abs(Zgnd - Ztil))
-        loss_dist = torch.mean(0.2 * torch.abs(Dgnd - Dtil))
+        loss_zval = torch.mean(5.0 * torch.abs(Zgnd - Ztil))
+        loss_dist = torch.mean(0.3 * torch.abs(Dgnd - Dtil))
         loss = loss_xval + loss_zval + loss_dist
         
         # Backprop
@@ -231,11 +227,6 @@ if __name__ == '__main__':
     
         # Logging
         
-        if rolling_loss is None:
-            rolling_loss = loss.item()
-        else:
-            rolling_loss = rolling_loss * 0.99 + loss.item() * 0.01
-        
         writer.add_scalar('projector/loss', loss.item(), i)
         
         writer.add_scalars('projector/loss_terms', {
@@ -243,6 +234,11 @@ if __name__ == '__main__':
             'zval': loss_zval.item(),
             'dist': loss_dist.item(),
         }, i)
+        
+        if rolling_loss is None:
+            rolling_loss = loss.item()
+        else:
+            rolling_loss = rolling_loss * 0.99 + loss.item() * 0.01
         
         if i % 10 == 0:
             sys.stdout.write('\rIter: %7i Loss: %5.3f' % (i, rolling_loss))
@@ -254,9 +250,7 @@ if __name__ == '__main__':
                 network_projector.linear1, 
                 network_projector.linear2, 
                 network_projector.linear3,
-                network_projector.linear4,
-                network_projector.linear5,
-                network_projector.linear6],
+                network_projector.linear4],
                 projector_mean_in,
                 projector_std_in,
                 projector_mean_out,

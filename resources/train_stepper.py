@@ -25,16 +25,12 @@ class Stepper(nn.Module):
         
         self.linear0 = nn.Linear(input_size, hidden_size)
         self.linear1 = nn.Linear(hidden_size, hidden_size)
-        self.linear2 = nn.Linear(hidden_size, hidden_size)
-        self.linear3 = nn.Linear(hidden_size, hidden_size)
-        self.linear4 = nn.Linear(hidden_size, input_size)
+        self.linear2 = nn.Linear(hidden_size, input_size)
 
     def forward(self, x):
         x = F.relu(self.linear0(x))
         x = F.relu(self.linear1(x))
-        x = F.relu(self.linear2(x))
-        x = F.relu(self.linear3(x))
-        return self.linear4(x)
+        return self.linear2(x)
 
 # Training procedure
 
@@ -59,7 +55,7 @@ if __name__ == '__main__':
     seed = 1234
     batchsize = 32
     lr = 0.001
-    niter = 1000000
+    niter = 500000
     window = 20
     dt = 1.0 / 60.0
     
@@ -233,10 +229,10 @@ if __name__ == '__main__':
         
         # Compute losses
         
-        loss_xval = torch.mean( 2.0 * torch.abs(Xgnd - Xtil))
-        loss_zval = torch.mean(15.0 * torch.abs(Zgnd - Ztil))
-        loss_xvel = torch.mean( 0.2 * torch.abs(Xgnd_vel - Xtil_vel))
-        loss_zvel = torch.mean( 1.5 * torch.abs(Zgnd_vel - Ztil_vel))
+        loss_xval = torch.mean(2.0 * torch.abs(Xgnd - Xtil))
+        loss_zval = torch.mean(7.5 * torch.abs(Zgnd - Ztil))
+        loss_xvel = torch.mean(0.2 * torch.abs(Xgnd_vel - Xtil_vel))
+        loss_zvel = torch.mean(0.5 * torch.abs(Zgnd_vel - Ztil_vel))
         loss = loss_xval + loss_zval + loss_xvel + loss_zvel
         
         # Backprop
@@ -247,11 +243,6 @@ if __name__ == '__main__':
     
         # Logging
         
-        if rolling_loss is None:
-            rolling_loss = loss.item()
-        else:
-            rolling_loss = rolling_loss * 0.99 + loss.item() * 0.01
-        
         writer.add_scalar('stepper/loss', loss.item(), i)
         
         writer.add_scalars('stepper/loss_terms', {
@@ -261,6 +252,11 @@ if __name__ == '__main__':
             'zvel': loss_zvel.item(),
         }, i)
         
+        if rolling_loss is None:
+            rolling_loss = loss.item()
+        else:
+            rolling_loss = rolling_loss * 0.99 + loss.item() * 0.01
+        
         if i % 10 == 0:
             sys.stdout.write('\rIter: %7i Loss: %5.3f' % (i, rolling_loss))
         
@@ -269,9 +265,7 @@ if __name__ == '__main__':
             save_network('stepper.bin', [
                 network_stepper.linear0, 
                 network_stepper.linear1, 
-                network_stepper.linear2, 
-                network_stepper.linear3,
-                network_stepper.linear4],
+                network_stepper.linear2],
                 stepper_mean_in,
                 stepper_std_in,
                 stepper_mean_out,

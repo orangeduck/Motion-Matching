@@ -4,6 +4,25 @@ This repo contains the source code for all the demos from [this article](https:/
 
 It also contains basic example implementations of Motion Matching and Learned Motion Matching in the style of [this paper](https://theorangeduck.com/page/learned-motion-matching).
 
-It uses [raylib](https://www.raylib.com/) or more specifically [raygui](https://github.com/raysan5/raygui) so if you have that installed it should be easy to play around and out.
+# Installation
 
-The data required if you want to regenerate the database is from [this dataset](https://github.com/ubisoft/ubisoft-laforge-animation-dataset) which is licensed under Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International Public License (unlike the code, which is licensed under MIT).
+This demo uses [raylib](https://www.raylib.com/) and [raygui](https://github.com/raysan5/raygui) so you will need to first install those. Once installed, the demo itself is a pretty straight forward to make - just compile `controller.cpp`.
+
+I've included a basic `Makefile` which you can use if you are using raylib on Windows. You may need to edit the paths in the `Makefile` but assuming default installation locations you can just run `Make`.
+
+If you are on Linux or another platform you will probably have to hack this `Makefile` a bit.
+
+# Web Demo
+
+If you want to compile the web demo you will need to first [install emscripten](https://github.com/raysan5/raylib/wiki/Working-for-Web-%28HTML5%29). Then you should be able to (on Windows) run `emsdk_env` followed by `make PLATFORM=PLATFORM_WEB`. You then need to run `wasm-server.py`, and from there will be able to access `localhost:8080/controller.html` in your web browser which should contain the demo.
+
+# Learned Motion Matching
+
+Most of the code and logic you can find in `controller.cpp`, with the Motion Matching search itself in `database.h`. The structure of the code is very similar to the previously mentioned [paper](https://theorangeduck.com/page/code-vs-data-driven-displacement) but not identical in all respects. For example, it does not contain some of the briefly mentioned optimizations to the animation database storage.
+
+If you want to re-train the networks you need to look in the `resources` folder. First you will need to run `train_decompresso.py`. This will use `database.bin` and `features.bin` and produce `decompressor.bin`, which represents the trained decompressor network, and `latent.bin`, which represents the additional features learned for each frame in the database. It will dump also out some images and `.bvh` files you can use to examine the progress (as well a write Tensorboard logs to the `resources/runs` directory). Once the decompressor is trained and you have `latent.bin`, you can then train the stepper and the projector using `train_stepper.py` and `train_projector.py`. Both of these will also output networks (`stepper.bin` and `projector.bin`) as well as some images you can use to get a rough sense of the progress.
+
+The data required if you want to regenerate the whole animation database is from [this dataset](https://github.com/ubisoft/ubisoft-laforge-animation-dataset) which is licensed under Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International Public License (unlike the code, which is licensed under MIT).
+
+If you re-generate the database you will also need to re-generate the matching database, which is done once you re-run the demo. You will also need to re-generate this and re-train the networks if you change the weights or any other properties that affect the matching.
+

@@ -518,9 +518,9 @@ void database_build_bounds(database& db)
         for (int j = 0; j < db.nfeatures(); j++)
         {
             db.bound_sm_min(i_sm, j) = minf(db.bound_sm_min(i_sm, j), db.features(i, j));
-            db.bound_sm_max(i_sm, j) = maxf(db.bound_sm_min(i_sm, j), db.features(i, j));
+            db.bound_sm_max(i_sm, j) = maxf(db.bound_sm_max(i_sm, j), db.features(i, j));
             db.bound_lr_min(i_lr, j) = minf(db.bound_lr_min(i_lr, j), db.features(i, j));
-            db.bound_lr_max(i_lr, j) = maxf(db.bound_lr_min(i_lr, j), db.features(i, j));
+            db.bound_lr_max(i_lr, j) = maxf(db.bound_lr_max(i_lr, j), db.features(i, j));
         }
     }
 }

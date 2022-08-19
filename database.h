@@ -440,6 +440,43 @@ void compute_bone_velocity_feature(database& db, int& offset, int bone, float we
     offset += 3;
 }
 
+
+void compute_bone_inertialize_feature(database& db, int& offset, int bone, float halflife, float weight = 1.0f)
+{
+    for (int i = 0; i < db.nframes(); i++)
+    {
+        vec3 bone_position;
+        vec3 bone_velocity;
+        quat bone_rotation;
+        vec3 bone_angular_velocity;
+        
+        forward_kinematics_velocity(
+            bone_position,
+            bone_velocity,
+            bone_rotation,
+            bone_angular_velocity,
+            db.bone_positions(i),
+            db.bone_velocities(i),
+            db.bone_rotations(i),
+            db.bone_angular_velocities(i),
+            db.bone_parents,
+            bone);
+        
+        bone_position = quat_mul_vec3(quat_inv(db.bone_rotations(i, 0)), bone_position - db.bone_positions(i, 0));
+        bone_velocity = quat_mul_vec3(quat_inv(db.bone_rotations(i, 0)), bone_velocity);        
+        
+        float halfdamp = halflife_to_damping(halflife) / 2.0f;
+        
+        db.features(i, offset + 0) = (2 * bone_position.x / halfdamp) + (bone_velocity.x / squaref(halfdamp));
+        db.features(i, offset + 1) = (2 * bone_position.y / halfdamp) + (bone_velocity.y / squaref(halfdamp));
+        db.features(i, offset + 2) = (2 * bone_position.z / halfdamp) + (bone_velocity.z / squaref(halfdamp));
+    }
+    
+    normalize_feature(db.features, db.features_offset, db.features_scale, offset, 3, weight);
+    
+    offset += 3;
+}
+
 // Compute the trajectory at 20, 40, and 60 frames in the future
 void compute_trajectory_position_feature(database& db, int& offset, float weight = 1.0f)
 {
@@ -548,10 +585,21 @@ void database_build_matching_features(
     db.features_scale.resize(nfeatures);
     
     int offset = 0;
+    
+    /*
     compute_bone_position_feature(db, offset, Bone_LeftFoot, feature_weight_foot_position);
     compute_bone_position_feature(db, offset, Bone_RightFoot, feature_weight_foot_position);
     compute_bone_velocity_feature(db, offset, Bone_LeftFoot, feature_weight_foot_velocity);
     compute_bone_velocity_feature(db, offset, Bone_RightFoot, feature_weight_foot_velocity);
+    compute_bone_velocity_feature(db, offset, Bone_Hips, feature_weight_hip_velocity);
+    compute_trajectory_position_feature(db, offset, feature_weight_trajectory_positions);
+    compute_trajectory_direction_feature(db, offset, feature_weight_trajectory_directions);
+    */
+    
+    compute_bone_inertialize_feature(db, offset, Bone_LeftFoot, 0.1f, feature_weight_foot_position);
+    compute_bone_inertialize_feature(db, offset, Bone_RightFoot, 0.1f, feature_weight_foot_position);
+    compute_bone_velocity_feature(db, offset, Bone_LeftFoot, 1e-10); // Hack: scale weight to zero instead of removing
+    compute_bone_velocity_feature(db, offset, Bone_RightFoot, 1e-10); // Hack: scale weight to zero instead of removing
     compute_bone_velocity_feature(db, offset, Bone_Hips, feature_weight_hip_velocity);
     compute_trajectory_position_feature(db, offset, feature_weight_trajectory_positions);
     compute_trajectory_direction_feature(db, offset, feature_weight_trajectory_directions);

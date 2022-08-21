@@ -492,6 +492,31 @@ void compute_trajectory_direction_feature(database& db, int& offset, float weigh
     offset += 6;
 }
 
+void compute_bone_phase_feature(database& db, int& offset, float weight = 1.0f)
+{    
+    array2d<float> phases;
+
+    FILE* f = fopen("./resources/phases.bin", "rb");
+    assert(f != NULL);
+    array2d_read(phases, f);
+    fclose(f);
+
+    assert(phases.rows == db.nframes());
+    assert(phases.cols == 16);
+    
+    for (int i = 0; i < db.nframes(); i++)
+    {
+        for (int j = 0; j < phases.cols; j++)
+        {
+            db.features(i, offset + j) = phases(i, j); 
+        }
+    }
+    
+    normalize_feature(db.features, db.features_offset, db.features_scale, offset, phases.cols, weight);
+
+    offset += phases.cols;
+}
+
 // Build the Motion Matching search acceleration structure. Here we
 // just use axis aligned bounding boxes regularly spaced at BOUND_SM_SIZE
 // and BOUND_LR_SIZE frames
@@ -529,19 +554,16 @@ void database_build_bounds(database& db)
 void database_build_matching_features(
     database& db,
     const float feature_weight_foot_position,
-    const float feature_weight_foot_velocity,
-    const float feature_weight_hip_velocity,
+    const float feature_weight_phase,
     const float feature_weight_trajectory_positions,
     const float feature_weight_trajectory_directions)
 {
     int nfeatures = 
-        3 + // Left Foot Position
-        3 + // Right Foot Position 
-        3 + // Left Foot Velocity
-        3 + // Right Foot Velocity
-        3 + // Hip Velocity
-        6 + // Trajectory Positions 2D
-        6 ; // Trajectory Directions 2D
+         3 + // Left Foot Position
+         3 + // Right Foot Position 
+        16 + // Phase Features
+         6 + // Trajectory Positions 2D
+         6 ; // Trajectory Directions 2D
         
     db.features.resize(db.nframes(), nfeatures);
     db.features_offset.resize(nfeatures);
@@ -550,9 +572,7 @@ void database_build_matching_features(
     int offset = 0;
     compute_bone_position_feature(db, offset, Bone_LeftFoot, feature_weight_foot_position);
     compute_bone_position_feature(db, offset, Bone_RightFoot, feature_weight_foot_position);
-    compute_bone_velocity_feature(db, offset, Bone_LeftFoot, feature_weight_foot_velocity);
-    compute_bone_velocity_feature(db, offset, Bone_RightFoot, feature_weight_foot_velocity);
-    compute_bone_velocity_feature(db, offset, Bone_Hips, feature_weight_hip_velocity);
+    compute_bone_phase_feature(db, offset, feature_weight_phase);
     compute_trajectory_position_feature(db, offset, feature_weight_trajectory_positions);
     compute_trajectory_direction_feature(db, offset, feature_weight_trajectory_directions);
     

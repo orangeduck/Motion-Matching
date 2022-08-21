@@ -1264,16 +1264,14 @@ int main(void)
     database_load(db, "./resources/database.bin");
     
     float feature_weight_foot_position = 0.75f;
-    float feature_weight_foot_velocity = 1.0f;
-    float feature_weight_hip_velocity = 1.0f;
+    float feature_weight_phase = 0.25f;
     float feature_weight_trajectory_positions = 1.0f;
     float feature_weight_trajectory_directions = 1.5f;
     
     database_build_matching_features(
         db,
         feature_weight_foot_position,
-        feature_weight_foot_velocity,
-        feature_weight_hip_velocity,
+        feature_weight_phase,
         feature_weight_trajectory_positions,
         feature_weight_trajectory_directions);
         
@@ -1621,9 +1619,7 @@ int main(void)
         int offset = 0;
         query_copy_denormalized_feature(query, offset, 3, query_features, db.features_offset, db.features_scale); // Left Foot Position
         query_copy_denormalized_feature(query, offset, 3, query_features, db.features_offset, db.features_scale); // Right Foot Position
-        query_copy_denormalized_feature(query, offset, 3, query_features, db.features_offset, db.features_scale); // Left Foot Velocity
-        query_copy_denormalized_feature(query, offset, 3, query_features, db.features_offset, db.features_scale); // Right Foot Velocity
-        query_copy_denormalized_feature(query, offset, 3, query_features, db.features_offset, db.features_scale); // Hip Velocity
+        query_copy_denormalized_feature(query, offset, 16, query_features, db.features_offset, db.features_scale); // Phases
         query_compute_trajectory_position_feature(query, offset, bone_positions(0), bone_rotations(0), trajectory_positions);
         query_compute_trajectory_direction_feature(query, offset, bone_rotations(0), trajectory_rotations);
         
@@ -2177,9 +2173,9 @@ int main(void)
         
         // Draw matched features
         
-        array1d<float> current_features = lmm_enabled ? slice1d<float>(features_curr) : db.features(frame_index);
-        denormalize_features(current_features, db.features_offset, db.features_scale);        
-        draw_features(current_features, bone_positions(0), bone_rotations(0), MAROON);
+        //array1d<float> current_features = lmm_enabled ? slice1d<float>(features_curr) : db.features(frame_index);
+        //denormalize_features(current_features, db.features_offset, db.features_scale);        
+        //draw_features(current_features, bone_positions(0), bone_rotations(0), MAROON);
         
         // Draw Simuation Bone
         
@@ -2299,17 +2295,11 @@ int main(void)
             TextFormat("%5.3f", feature_weight_foot_position), 
             feature_weight_foot_position, 0.001f, 3.0f);
             
-        feature_weight_foot_velocity = GuiSliderBar(
+        feature_weight_phase = GuiSliderBar(
             (Rectangle){ 150, 60, 120, 20 }, 
-            "foot velocity", 
-            TextFormat("%5.3f", feature_weight_foot_velocity), 
-            feature_weight_foot_velocity, 0.001f, 3.0f);
-        
-        feature_weight_hip_velocity = GuiSliderBar(
-            (Rectangle){ 150, 90, 120, 20 }, 
-            "hip velocity", 
-            TextFormat("%5.3f", feature_weight_hip_velocity), 
-            feature_weight_hip_velocity, 0.001f, 3.0f);
+            "phase", 
+            TextFormat("%5.3f", feature_weight_phase), 
+            feature_weight_phase, 0.001f, 3.0f);
         
         feature_weight_trajectory_positions = GuiSliderBar(
             (Rectangle){ 150, 120, 120, 20 }, 
@@ -2328,8 +2318,7 @@ int main(void)
             database_build_matching_features(
                 db,
                 feature_weight_foot_position,
-                feature_weight_foot_velocity,
-                feature_weight_hip_velocity,
+                feature_weight_phase,
                 feature_weight_trajectory_positions,
                 feature_weight_trajectory_directions);
         }

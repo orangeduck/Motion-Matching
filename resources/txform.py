@@ -12,6 +12,12 @@ def mul(x, y):
 def mul_vec(x, v):
     return torch.matmul(x, v[...,None])[...,0]
 
+def inv_mul(x, y):
+    return torch.matmul(x.transpose(-1, -2), y)
+    
+def inv_mul_vec(x, v):
+    return torch.matmul(x.transpose(-1, -2), v[...,None])[...,0]
+
 def from_xy(x):
 
     c2 = _fast_cross(x[...,0], x[...,1])

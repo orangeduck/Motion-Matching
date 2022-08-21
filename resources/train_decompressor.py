@@ -94,7 +94,14 @@ if __name__ == '__main__':
     
     # Compute world space
     
-    Qrot, Qpos, Qvel, Qang = quat.fk_vel(Yrot, Ypos, Yvel, Yang, parents)
+    Grot, Gpos, Gvel, Gang = quat.fk_vel(Yrot, Ypos, Yvel, Yang, parents)
+    
+    # Compute character space
+    
+    Qrot = quat.inv_mul(Grot[:,0:1], Grot)
+    Qpos = quat.inv_mul_vec(Grot[:,0:1], Gpos - Gpos[:,0:1])
+    Qvel = quat.inv_mul_vec(Grot[:,0:1], Gvel)
+    Qang = quat.inv_mul_vec(Grot[:,0:1], Gang)
     
     # Compute transformation matrix
     
@@ -186,7 +193,6 @@ if __name__ == '__main__':
     
     Ypos = torch.as_tensor(Ypos)
     Yrot = torch.as_tensor(Yrot)
-    Yxfm = torch.as_tensor(Yxfm)
     Ytxy = torch.as_tensor(Ytxy)
     Yvel = torch.as_tensor(Yvel)
     Yang = torch.as_tensor(Yang)
@@ -405,7 +411,6 @@ if __name__ == '__main__':
         Xgnd = X[batch]
         
         Ygnd_pos = Ypos[batch]
-        Ygnd_xfm = Yxfm[batch]
         Ygnd_txy = Ytxy[batch]
         Ygnd_vel = Yvel[batch]
         Ygnd_ang = Yang[batch]
@@ -461,8 +466,15 @@ if __name__ == '__main__':
         
         Ytil_xfm = txform.from_xy(Ytil_txy)
 
-        Qtil_xfm, Qtil_pos, Qtil_vel, Qtil_ang = txform.fk_vel(
+        Gtil_xfm, Gtil_pos, Gtil_vel, Gtil_ang = txform.fk_vel(
             Ytil_xfm, Ytil_pos, Ytil_vel, Ytil_ang, parents)
+        
+        # Compute Character Space
+        
+        Qtil_xfm = txform.inv_mul(Gtil_xfm[:,:,0:1], Gtil_xfm)
+        Qtil_pos = txform.inv_mul_vec(Gtil_xfm[:,:,0:1], Gtil_pos - Gtil_pos[:,:,0:1])
+        Qtil_vel = txform.inv_mul_vec(Gtil_xfm[:,:,0:1], Gtil_vel)
+        Qtil_ang = txform.inv_mul_vec(Gtil_xfm[:,:,0:1], Gtil_ang)
         
         # Compute deltas
         

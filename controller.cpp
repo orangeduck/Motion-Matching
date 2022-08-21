@@ -1258,31 +1258,33 @@ int main(void)
     Model character_model = LoadModelFromMesh(character_mesh);
     character_model.materials[0].shader = character_shader;
     
+    // Inertializer Halflife 
+    
+    float inertialize_blending_halflife = 0.1f;
+    
     // Load Animation Data and build Matching Database
     
     database db;
     database_load(db, "./resources/database.bin");
     
-    float feature_weight_foot_position = 0.75f;
-    float feature_weight_foot_velocity = 1.0f;
+    float feature_weight_foot_inertialize = 1.0f;
     float feature_weight_hip_velocity = 1.0f;
     float feature_weight_trajectory_positions = 1.0f;
     float feature_weight_trajectory_directions = 1.5f;
     
     database_build_matching_features(
         db,
-        feature_weight_foot_position,
-        feature_weight_foot_velocity,
+        feature_weight_foot_inertialize,
         feature_weight_hip_velocity,
         feature_weight_trajectory_positions,
-        feature_weight_trajectory_directions);
+        feature_weight_trajectory_directions,
+        inertialize_blending_halflife);
         
     database_save_matching_features(db, "./resources/features.bin");
    
     // Pose & Inertializer Data
     
     int frame_index = db.range_starts(0);
-    float inertialize_blending_halflife = 0.1f;
 
     array1d<vec3> curr_bone_positions = db.bone_positions(frame_index);
     array1d<vec3> curr_bone_velocities = db.bone_velocities(frame_index);
@@ -1619,10 +1621,8 @@ int main(void)
         slice1d<float> query_features = lmm_enabled ? slice1d<float>(features_curr) : db.features(frame_index);
 
         int offset = 0;
-        query_copy_denormalized_feature(query, offset, 3, query_features, db.features_offset, db.features_scale); // Left Foot Position
-        query_copy_denormalized_feature(query, offset, 3, query_features, db.features_offset, db.features_scale); // Right Foot Position
-        query_copy_denormalized_feature(query, offset, 3, query_features, db.features_offset, db.features_scale); // Left Foot Velocity
-        query_copy_denormalized_feature(query, offset, 3, query_features, db.features_offset, db.features_scale); // Right Foot Velocity
+        query_copy_denormalized_feature(query, offset, 3, query_features, db.features_offset, db.features_scale); // Left Foot Inertialize
+        query_copy_denormalized_feature(query, offset, 3, query_features, db.features_offset, db.features_scale); // Right Foot Inertialize
         query_copy_denormalized_feature(query, offset, 3, query_features, db.features_offset, db.features_scale); // Hip Velocity
         query_compute_trajectory_position_feature(query, offset, bone_positions(0), bone_rotations(0), trajectory_positions);
         query_compute_trajectory_direction_feature(query, offset, bone_rotations(0), trajectory_rotations);
@@ -2177,9 +2177,9 @@ int main(void)
         
         // Draw matched features
         
-        array1d<float> current_features = lmm_enabled ? slice1d<float>(features_curr) : db.features(frame_index);
-        denormalize_features(current_features, db.features_offset, db.features_scale);        
-        draw_features(current_features, bone_positions(0), bone_rotations(0), MAROON);
+        //array1d<float> current_features = lmm_enabled ? slice1d<float>(features_curr) : db.features(frame_index);
+        //denormalize_features(current_features, db.features_offset, db.features_scale);        
+        //draw_features(current_features, bone_positions(0), bone_rotations(0), MAROON);
         
         // Draw Simuation Bone
         
@@ -2293,17 +2293,11 @@ int main(void)
         
         GuiGroupBox((Rectangle){ 20, 20, 290, 190 }, "feature weights");
         
-        feature_weight_foot_position = GuiSliderBar(
+        feature_weight_foot_inertialize = GuiSliderBar(
             (Rectangle){ 150, 30, 120, 20 }, 
             "foot position", 
-            TextFormat("%5.3f", feature_weight_foot_position), 
-            feature_weight_foot_position, 0.001f, 3.0f);
-            
-        feature_weight_foot_velocity = GuiSliderBar(
-            (Rectangle){ 150, 60, 120, 20 }, 
-            "foot velocity", 
-            TextFormat("%5.3f", feature_weight_foot_velocity), 
-            feature_weight_foot_velocity, 0.001f, 3.0f);
+            TextFormat("%5.3f", feature_weight_foot_inertialize), 
+            feature_weight_foot_inertialize, 0.001f, 3.0f);
         
         feature_weight_hip_velocity = GuiSliderBar(
             (Rectangle){ 150, 90, 120, 20 }, 
@@ -2327,11 +2321,11 @@ int main(void)
         {
             database_build_matching_features(
                 db,
-                feature_weight_foot_position,
-                feature_weight_foot_velocity,
+                feature_weight_foot_inertialize,
                 feature_weight_hip_velocity,
                 feature_weight_trajectory_positions,
-                feature_weight_trajectory_directions);
+                feature_weight_trajectory_directions,
+                inertialize_blending_halflife);
         }
         
         //---------

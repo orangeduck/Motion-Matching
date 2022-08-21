@@ -565,17 +565,15 @@ void database_build_bounds(database& db)
 // Build all motion matching features and acceleration structure
 void database_build_matching_features(
     database& db,
-    const float feature_weight_foot_position,
-    const float feature_weight_foot_velocity,
+    const float feature_weight_foot_inertialize,
     const float feature_weight_hip_velocity,
     const float feature_weight_trajectory_positions,
-    const float feature_weight_trajectory_directions)
+    const float feature_weight_trajectory_directions,
+    const float halflife)
 {
     int nfeatures = 
-        3 + // Left Foot Position
-        3 + // Right Foot Position 
-        3 + // Left Foot Velocity
-        3 + // Right Foot Velocity
+        3 + // Left Foot Inertialize
+        3 + // Right Foot Inertialize 
         3 + // Hip Velocity
         6 + // Trajectory Positions 2D
         6 ; // Trajectory Directions 2D
@@ -586,20 +584,8 @@ void database_build_matching_features(
     
     int offset = 0;
     
-    /*
-    compute_bone_position_feature(db, offset, Bone_LeftFoot, feature_weight_foot_position);
-    compute_bone_position_feature(db, offset, Bone_RightFoot, feature_weight_foot_position);
-    compute_bone_velocity_feature(db, offset, Bone_LeftFoot, feature_weight_foot_velocity);
-    compute_bone_velocity_feature(db, offset, Bone_RightFoot, feature_weight_foot_velocity);
-    compute_bone_velocity_feature(db, offset, Bone_Hips, feature_weight_hip_velocity);
-    compute_trajectory_position_feature(db, offset, feature_weight_trajectory_positions);
-    compute_trajectory_direction_feature(db, offset, feature_weight_trajectory_directions);
-    */
-    
-    compute_bone_inertialize_feature(db, offset, Bone_LeftFoot, 0.1f, feature_weight_foot_position);
-    compute_bone_inertialize_feature(db, offset, Bone_RightFoot, 0.1f, feature_weight_foot_position);
-    compute_bone_velocity_feature(db, offset, Bone_LeftFoot, 1e-10); // Hack: scale weight to zero instead of removing
-    compute_bone_velocity_feature(db, offset, Bone_RightFoot, 1e-10); // Hack: scale weight to zero instead of removing
+    compute_bone_inertialize_feature(db, offset, Bone_LeftFoot, halflife, feature_weight_foot_inertialize);
+    compute_bone_inertialize_feature(db, offset, Bone_RightFoot, halflife, feature_weight_foot_inertialize);
     compute_bone_velocity_feature(db, offset, Bone_Hips, feature_weight_hip_velocity);
     compute_trajectory_position_feature(db, offset, feature_weight_trajectory_positions);
     compute_trajectory_direction_feature(db, offset, feature_weight_trajectory_directions);

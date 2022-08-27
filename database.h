@@ -492,15 +492,8 @@ void compute_trajectory_direction_feature(database& db, int& offset, float weigh
     offset += 6;
 }
 
-void compute_bone_phase_feature(database& db, int& offset, float weight = 1.0f)
+void compute_bone_phase_feature(database& db, int& offset, slice2d<float> phases, float weight = 1.0f)
 {    
-    array2d<float> phases;
-
-    FILE* f = fopen("./resources/phases.bin", "rb");
-    assert(f != NULL);
-    array2d_read(phases, f);
-    fclose(f);
-
     assert(phases.rows == db.nframes());
     assert(phases.cols == 16);
     
@@ -553,6 +546,7 @@ void database_build_bounds(database& db)
 // Build all motion matching features and acceleration structure
 void database_build_matching_features(
     database& db,
+    slice2d<float> phases,
     const float feature_weight_foot_position,
     const float feature_weight_phase,
     const float feature_weight_trajectory_positions,
@@ -572,7 +566,7 @@ void database_build_matching_features(
     int offset = 0;
     compute_bone_position_feature(db, offset, Bone_LeftFoot, feature_weight_foot_position);
     compute_bone_position_feature(db, offset, Bone_RightFoot, feature_weight_foot_position);
-    compute_bone_phase_feature(db, offset, feature_weight_phase);
+    compute_bone_phase_feature(db, offset, phases, feature_weight_phase);
     compute_trajectory_position_feature(db, offset, feature_weight_trajectory_positions);
     compute_trajectory_direction_feature(db, offset, feature_weight_trajectory_directions);
     

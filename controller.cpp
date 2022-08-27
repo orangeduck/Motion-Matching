@@ -1263,6 +1263,12 @@ int main(void)
     database db;
     database_load(db, "./resources/database.bin");
     
+    array2d<float> phases;
+    FILE* f = fopen("./resources/phases.bin", "rb");
+    assert(f != NULL);
+    array2d_read(phases, f);
+    fclose(f);
+  
     float feature_weight_foot_position = 0.75f;
     float feature_weight_phase = 0.25f;
     float feature_weight_trajectory_positions = 1.0f;
@@ -1270,6 +1276,7 @@ int main(void)
     
     database_build_matching_features(
         db,
+        phases,
         feature_weight_foot_position,
         feature_weight_phase,
         feature_weight_trajectory_positions,
@@ -2317,6 +2324,7 @@ int main(void)
         {
             database_build_matching_features(
                 db,
+                phases,
                 feature_weight_foot_position,
                 feature_weight_phase,
                 feature_weight_trajectory_positions,
@@ -2453,6 +2461,21 @@ int main(void)
             TextFormat("%5.3f", ik_unlock_radius), 
             ik_unlock_radius, 0.0f, 0.5f);
         
+    //---------
+        
+        for (int pi = 0; pi < phases.cols / 2; pi++)
+        {
+            float px = 25.0 * phases(frame_index, pi * 2 + 0);
+            float py = 25.0 * phases(frame_index, pi * 2 + 1);
+            float amp = sqrtf(squaref(px) + squaref(py));
+            
+            float pos_x = 500 + pi * 100;
+            float pos_y = 650;
+            
+            DrawLine(pos_x, pos_y, pos_x + px, pos_y + py, MAROON);
+            DrawCircleLines(pos_x, pos_y, amp, MAROON);
+        }
+    
         //---------
 
         EndDrawing();

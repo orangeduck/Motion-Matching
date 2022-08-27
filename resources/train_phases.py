@@ -131,7 +131,7 @@ if __name__ == '__main__':
     
     encoder_mean = torch.as_tensor(Qvel.mean(axis=0).ravel(), dtype=torch.float32, device=device)
     encoder_std_in = torch.as_tensor(Qvel.std().repeat(nbones*3), dtype=torch.float32, device=device)
-    encoder_std_out = torch.as_tensor(Qvel.mean(axis=0).ravel(), dtype=torch.float32, device=device)
+    encoder_std_out = torch.as_tensor(Qvel.std(axis=0).ravel(), dtype=torch.float32, device=device)
     
     # Make PyTorch tensors
     

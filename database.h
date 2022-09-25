@@ -441,7 +441,7 @@ void compute_bone_velocity_feature(database& db, int& offset, int bone, float we
 }
 
 
-void compute_bone_inertialize_feature(database& db, int& offset, int bone, float halflife, float weight = 1.0f)
+void compute_bone_inertialize_feature(database& db, int& offset, int bone, float blendtime, float weight = 1.0f)
 {
     for (int i = 0; i < db.nframes(); i++)
     {
@@ -465,11 +465,9 @@ void compute_bone_inertialize_feature(database& db, int& offset, int bone, float
         bone_position = quat_mul_vec3(quat_inv(db.bone_rotations(i, 0)), bone_position - db.bone_positions(i, 0));
         bone_velocity = quat_mul_vec3(quat_inv(db.bone_rotations(i, 0)), bone_velocity);        
         
-        float halfdamp = halflife_to_damping(halflife) / 2.0f;
-        
-        db.features(i, offset + 0) = (2 * bone_position.x / halfdamp) + (bone_velocity.x / squaref(halfdamp));
-        db.features(i, offset + 1) = (2 * bone_position.y / halfdamp) + (bone_velocity.y / squaref(halfdamp));
-        db.features(i, offset + 2) = (2 * bone_position.z / halfdamp) + (bone_velocity.z / squaref(halfdamp));
+        db.features(i, offset + 0) = (1.0f/12.0f) * squaref(blendtime) * bone_velocity.x + (1.0f/2.0f) * blendtime * bone_position.x;
+        db.features(i, offset + 1) = (1.0f/12.0f) * squaref(blendtime) * bone_velocity.y + (1.0f/2.0f) * blendtime * bone_position.y;
+        db.features(i, offset + 2) = (1.0f/12.0f) * squaref(blendtime) * bone_velocity.z + (1.0f/2.0f) * blendtime * bone_position.z;
     }
     
     normalize_feature(db.features, db.features_offset, db.features_scale, offset, 3, weight);
@@ -569,7 +567,7 @@ void database_build_matching_features(
     const float feature_weight_hip_velocity,
     const float feature_weight_trajectory_positions,
     const float feature_weight_trajectory_directions,
-    const float halflife)
+    const float blendtime)
 {
     int nfeatures = 
         3 + // Left Foot Inertialize
@@ -584,8 +582,8 @@ void database_build_matching_features(
     
     int offset = 0;
     
-    compute_bone_inertialize_feature(db, offset, Bone_LeftFoot, halflife, feature_weight_foot_inertialize);
-    compute_bone_inertialize_feature(db, offset, Bone_RightFoot, halflife, feature_weight_foot_inertialize);
+    compute_bone_inertialize_feature(db, offset, Bone_LeftFoot, blendtime, feature_weight_foot_inertialize);
+    compute_bone_inertialize_feature(db, offset, Bone_RightFoot, blendtime, feature_weight_foot_inertialize);
     compute_bone_velocity_feature(db, offset, Bone_Hips, feature_weight_hip_velocity);
     compute_trajectory_position_feature(db, offset, feature_weight_trajectory_positions);
     compute_trajectory_direction_feature(db, offset, feature_weight_trajectory_directions);

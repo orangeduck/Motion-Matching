@@ -511,6 +511,221 @@ void inertialize_pose_update(
 
 //--------------------------------------
 
+void inertialize_cubic_pose_reset(
+    slice1d<vec3> bone_offset_positions,
+    slice1d<vec3> bone_offset_velocities,
+    slice1d<quat> bone_offset_rotations,
+    slice1d<vec3> bone_offset_angular_velocities,
+    slice1d<float> bone_offset_position_times,
+    slice1d<float> bone_offset_rotation_times,
+    vec3& transition_src_position,
+    quat& transition_src_rotation,
+    vec3& transition_dst_position,
+    quat& transition_dst_rotation,
+    const vec3 root_position,
+    const quat root_rotation)
+{
+    bone_offset_positions.zero();
+    bone_offset_velocities.zero();
+    bone_offset_rotations.set(quat());
+    bone_offset_angular_velocities.zero();
+    bone_offset_position_times.zero();
+    bone_offset_rotation_times.zero();
+    
+    transition_src_position = root_position;
+    transition_src_rotation = root_rotation;
+    transition_dst_position = vec3();
+    transition_dst_rotation = quat();
+}
+
+// This function transitions the inertializer for 
+// the full character. It takes as input the current 
+// offsets, as well as the root transition locations,
+// current root state, and the full pose information 
+// for the pose being transitioned from (src) as well 
+// as the pose being transitioned to (dst) in their
+// own animation spaces.
+void inertialize_cubic_pose_transition(
+    slice1d<vec3> bone_offset_positions,
+    slice1d<vec3> bone_offset_velocities,
+    slice1d<quat> bone_offset_rotations,
+    slice1d<vec3> bone_offset_angular_velocities,
+    slice1d<float> bone_offset_position_times,
+    slice1d<float> bone_offset_rotation_times,
+    vec3& transition_src_position,
+    quat& transition_src_rotation,
+    vec3& transition_dst_position,
+    quat& transition_dst_rotation,
+    const vec3 root_position,
+    const vec3 root_velocity,
+    const quat root_rotation,
+    const vec3 root_angular_velocity,
+    const slice1d<vec3> bone_src_positions,
+    const slice1d<vec3> bone_src_velocities,
+    const slice1d<quat> bone_src_rotations,
+    const slice1d<vec3> bone_src_angular_velocities,
+    const slice1d<vec3> bone_dst_positions,
+    const slice1d<vec3> bone_dst_velocities,
+    const slice1d<quat> bone_dst_rotations,
+    const slice1d<vec3> bone_dst_angular_velocities,
+    const float blendtime)
+{
+    // First we record the root position and rotation
+    // in the animation data for the source and destination
+    // animation
+    transition_dst_position = root_position;
+    transition_dst_rotation = root_rotation;
+    transition_src_position = bone_dst_positions(0);
+    transition_src_rotation = bone_dst_rotations(0);
+    
+    // We then find the velocities so we can transition the 
+    // root inertiaizers
+    vec3 world_space_dst_velocity = quat_mul_vec3(transition_dst_rotation, 
+        quat_inv_mul_vec3(transition_src_rotation, bone_dst_velocities(0)));
+    
+    vec3 world_space_dst_angular_velocity = quat_mul_vec3(transition_dst_rotation, 
+        quat_inv_mul_vec3(transition_src_rotation, bone_dst_angular_velocities(0)));
+    
+    // Transition inertializers recording the offsets for 
+    // the root joint
+    inertialize_cubic_transition(
+        bone_offset_positions(0),
+        bone_offset_velocities(0),
+        bone_offset_position_times(0),
+        root_position,
+        root_velocity,
+        root_position,
+        world_space_dst_velocity,
+        blendtime);
+        
+    inertialize_cubic_transition(
+        bone_offset_rotations(0),
+        bone_offset_angular_velocities(0),
+        bone_offset_rotation_times(0),
+        root_rotation,
+        root_angular_velocity,
+        root_rotation,
+        world_space_dst_angular_velocity,
+        blendtime);
+    
+    // Transition all the inertializers for each other bone
+    for (int i = 1; i < bone_offset_positions.size; i++)
+    {
+        inertialize_cubic_transition(
+            bone_offset_positions(i),
+            bone_offset_velocities(i),
+            bone_offset_position_times(i),
+            bone_src_positions(i),
+            bone_src_velocities(i),
+            bone_dst_positions(i),
+            bone_dst_velocities(i),
+            blendtime);
+            
+        inertialize_cubic_transition(
+            bone_offset_rotations(i),
+            bone_offset_angular_velocities(i),
+            bone_offset_rotation_times(i),
+            bone_src_rotations(i),
+            bone_src_angular_velocities(i),
+            bone_dst_rotations(i),
+            bone_dst_angular_velocities(i),
+            blendtime);
+    }
+}
+
+void inertialize_cubic_pose_update(
+    slice1d<vec3> bone_positions,
+    slice1d<vec3> bone_velocities,
+    slice1d<quat> bone_rotations,
+    slice1d<vec3> bone_angular_velocities,
+    slice1d<vec3> bone_offset_positions,
+    slice1d<vec3> bone_offset_velocities,
+    slice1d<quat> bone_offset_rotations,
+    slice1d<vec3> bone_offset_angular_velocities,
+    slice1d<float> bone_offset_position_times,
+    slice1d<float> bone_offset_rotation_times,
+    const slice1d<vec3> bone_input_positions,
+    const slice1d<vec3> bone_input_velocities,
+    const slice1d<quat> bone_input_rotations,
+    const slice1d<vec3> bone_input_angular_velocities,
+    const vec3 transition_src_position,
+    const quat transition_src_rotation,
+    const vec3 transition_dst_position,
+    const quat transition_dst_rotation,
+    const float blendtime,
+    const float dt)
+{
+    // First we find the next root position, velocity, rotation
+    // and rotational velocity in the world space by transforming 
+    // the input animation from it's animation space into the 
+    // space of the currently playing animation.
+    vec3 world_space_position = quat_mul_vec3(transition_dst_rotation, 
+        quat_inv_mul_vec3(transition_src_rotation, 
+            bone_input_positions(0) - transition_src_position)) + transition_dst_position;
+    
+    vec3 world_space_velocity = quat_mul_vec3(transition_dst_rotation, 
+        quat_inv_mul_vec3(transition_src_rotation, bone_input_velocities(0)));
+    
+    // Normalize here because quat inv mul can sometimes produce 
+    // unstable returns when the two rotations are very close.
+    quat world_space_rotation = quat_normalize(quat_mul(transition_dst_rotation, 
+        quat_inv_mul(transition_src_rotation, bone_input_rotations(0))));
+    
+    vec3 world_space_angular_velocity = quat_mul_vec3(transition_dst_rotation, 
+        quat_inv_mul_vec3(transition_src_rotation, bone_input_angular_velocities(0)));
+    
+    // Then we update these two inertializers with these new world space inputs
+    inertialize_cubic_update(
+        bone_positions(0),
+        bone_velocities(0),
+        bone_offset_position_times(0),
+        bone_offset_positions(0),
+        bone_offset_velocities(0),
+        world_space_position,
+        world_space_velocity,
+        blendtime,
+        dt);
+        
+    inertialize_cubic_update(
+        bone_rotations(0),
+        bone_angular_velocities(0),
+        bone_offset_rotation_times(0),
+        bone_offset_rotations(0),
+        bone_offset_angular_velocities(0),
+        world_space_rotation,
+        world_space_angular_velocity,
+        blendtime,
+        dt);        
+    
+    // Then we update the inertializers for the rest of the bones
+    for (int i = 1; i < bone_positions.size; i++)
+    {
+        inertialize_cubic_update(
+            bone_positions(i),
+            bone_velocities(i),
+            bone_offset_position_times(i),
+            bone_offset_positions(i),
+            bone_offset_velocities(i),
+            bone_input_positions(i),
+            bone_input_velocities(i),
+            blendtime,
+            dt);
+            
+        inertialize_cubic_update(
+            bone_rotations(i),
+            bone_angular_velocities(i),
+            bone_offset_rotation_times(i),
+            bone_offset_rotations(i),
+            bone_offset_angular_velocities(i),
+            bone_input_rotations(i),
+            bone_input_angular_velocities(i),
+            blendtime,
+            dt);
+    }
+}
+
+//--------------------------------------
+
 // Copy a part of a feature vector from the 
 // matching database into the query feature vector
 void query_copy_denormalized_feature(
@@ -1261,6 +1476,7 @@ int main(void)
     // Inertializer Halflife 
     
     float inertialize_blending_halflife = 0.1f;
+    float inertialize_blending_blendtime = 0.2f;
     
     // Load Animation Data and build Matching Database
     
@@ -1278,7 +1494,7 @@ int main(void)
         feature_weight_hip_velocity,
         feature_weight_trajectory_positions,
         feature_weight_trajectory_directions,
-        inertialize_blending_halflife);
+        inertialize_blending_blendtime);
         
     database_save_matching_features(db, "./resources/features.bin");
    
@@ -1307,6 +1523,8 @@ int main(void)
     array1d<vec3> bone_offset_velocities(db.nbones());
     array1d<quat> bone_offset_rotations(db.nbones());
     array1d<vec3> bone_offset_angular_velocities(db.nbones());
+    array1d<float> bone_offset_position_times(db.nbones());
+    array1d<float> bone_offset_rotation_times(db.nbones());
     
     array1d<vec3> global_bone_positions(db.nbones());
     array1d<vec3> global_bone_velocities(db.nbones());
@@ -1319,11 +1537,13 @@ int main(void)
     vec3 transition_dst_position;
     quat transition_dst_rotation;
     
-    inertialize_pose_reset(
+    inertialize_cubic_pose_reset(
         bone_offset_positions,
         bone_offset_velocities,
         bone_offset_rotations,
         bone_offset_angular_velocities,
+        bone_offset_position_times,
+        bone_offset_rotation_times,
         transition_src_position,
         transition_src_rotation,
         transition_dst_position,
@@ -1331,7 +1551,7 @@ int main(void)
         bone_positions(0),
         bone_rotations(0));
     
-    inertialize_pose_update(
+    inertialize_cubic_pose_update(
         bone_positions,
         bone_velocities,
         bone_rotations,
@@ -1340,6 +1560,8 @@ int main(void)
         bone_offset_velocities,
         bone_offset_rotations,
         bone_offset_angular_velocities,
+        bone_offset_position_times,
+        bone_offset_rotation_times,
         db.bone_positions(frame_index),
         db.bone_velocities(frame_index),
         db.bone_rotations(frame_index),
@@ -1348,7 +1570,7 @@ int main(void)
         transition_src_rotation,
         transition_dst_position,
         transition_dst_rotation,
-        inertialize_blending_halflife,
+        inertialize_blending_blendtime,
         0.0f);
         
     // Trajectory & Gameplay Data
@@ -1673,11 +1895,13 @@ int main(void)
                         dt);
                     
                     // Transition inertializer to this pose
-                    inertialize_pose_transition(
+                    inertialize_cubic_pose_transition(
                         bone_offset_positions,
                         bone_offset_velocities,
                         bone_offset_rotations,
                         bone_offset_angular_velocities,
+                        bone_offset_position_times,
+                        bone_offset_rotation_times,
                         transition_src_position,
                         transition_src_rotation,
                         transition_dst_position,
@@ -1693,7 +1917,8 @@ int main(void)
                         trns_bone_positions,
                         trns_bone_velocities,
                         trns_bone_rotations,
-                        trns_bone_angular_velocities);
+                        trns_bone_angular_velocities,
+                        inertialize_blending_blendtime);
                     
                     // Update current features and latents
                     features_curr = features_proj;
@@ -1722,11 +1947,13 @@ int main(void)
                     trns_bone_rotations = db.bone_rotations(best_index);
                     trns_bone_angular_velocities = db.bone_angular_velocities(best_index);
                     
-                    inertialize_pose_transition(
+                    inertialize_cubic_pose_transition(
                         bone_offset_positions,
                         bone_offset_velocities,
                         bone_offset_rotations,
                         bone_offset_angular_velocities,
+                        bone_offset_position_times,
+                        bone_offset_rotation_times,
                         transition_src_position,
                         transition_src_rotation,
                         transition_dst_position,
@@ -1742,7 +1969,8 @@ int main(void)
                         trns_bone_positions,
                         trns_bone_velocities,
                         trns_bone_rotations,
-                        trns_bone_angular_velocities);
+                        trns_bone_angular_velocities,
+                        inertialize_blending_blendtime);
                     
                     frame_index = best_index;
                 }
@@ -1795,7 +2023,7 @@ int main(void)
         
         // Update inertializer
         
-        inertialize_pose_update(
+        inertialize_cubic_pose_update(
             bone_positions,
             bone_velocities,
             bone_rotations,
@@ -1804,6 +2032,8 @@ int main(void)
             bone_offset_velocities,
             bone_offset_rotations,
             bone_offset_angular_velocities,
+            bone_offset_position_times,
+            bone_offset_rotation_times,
             curr_bone_positions,
             curr_bone_velocities,
             curr_bone_rotations,
@@ -1812,7 +2042,7 @@ int main(void)
             transition_src_rotation,
             transition_dst_position,
             transition_dst_rotation,
-            inertialize_blending_halflife,
+            inertialize_blending_blendtime,
             dt);
         
         // Update Simulation
@@ -2257,11 +2487,20 @@ int main(void)
         
         GuiGroupBox((Rectangle){ 970, ui_inert_hei, 290, 40 }, "inertiaization blending");
         
+        /*
         inertialize_blending_halflife = GuiSliderBar(
             (Rectangle){ 1100, ui_inert_hei + 10, 120, 20 }, 
             "halflife", 
             TextFormat("%5.3f", inertialize_blending_halflife), 
             inertialize_blending_halflife, 0.0f, 0.3f);
+        */
+        
+        inertialize_blending_blendtime = GuiSliderBar(
+            (Rectangle){ 1100, ui_inert_hei + 10, 120, 20 }, 
+            "blendtime", 
+            TextFormat("%5.3f", inertialize_blending_blendtime), 
+            inertialize_blending_blendtime, 0.0f, 1.0f);
+        
         
         //---------
         

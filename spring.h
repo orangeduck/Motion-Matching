@@ -212,3 +212,123 @@ static inline void inertialize_update(
     out_x = quat_mul(off_x, in_x);
     out_v = off_v + in_v;
 }
+
+//--------------------------------------
+
+void decayed_offset_cubic(
+    vec3& out_x,
+    vec3& out_v,
+    const vec3 init_x,
+    const vec3 init_v,
+    const float blendtime, 
+    const float dt,
+    const float eps=1e-8)
+{
+    float t = clampf(dt / (blendtime + eps), 0, 1);
+
+    vec3 d = init_x;
+    vec3 c = init_v * blendtime;
+    vec3 b = -3*d - 2*c;
+    vec3 a = 2*d + c;
+    
+    out_x = a*t*t*t + b*t*t + c*t + d;
+    out_v = blendtime * (3*a*t*t + 2*b*t + c);
+}
+
+void decayed_offset_cubic(
+    quat& out_x,
+    vec3& out_v,
+    const quat init_x,
+    const vec3 init_v,
+    const float blendtime, 
+    const float dt,
+    const float eps=1e-8)
+{
+    float t = clampf(dt / (blendtime + eps), 0, 1);
+
+    vec3 d = quat_to_scaled_angle_axis(init_x);
+    vec3 c = init_v * blendtime;
+    vec3 b = -3*d - 2*c;
+    vec3 a = 2*d + c;
+    
+    out_x = quat_from_scaled_angle_axis(a*t*t*t + b*t*t + c*t + d);
+    out_v = blendtime * (3*a*t*t + 2*b*t + c);
+}
+
+static inline void inertialize_cubic_transition(
+    vec3& off_x, 
+    vec3& off_v, 
+    float& off_t,
+    const vec3 src_x,
+    const vec3 src_v,
+    const vec3 dst_x,
+    const vec3 dst_v,
+    const float blendtime)
+{
+    vec3 dec_x, dec_v;
+    decayed_offset_cubic(dec_x, dec_v, off_x, off_v, blendtime, off_t);
+    
+    off_x = (dec_x + src_x) - dst_x;
+    off_v = (dec_v + src_v) - dst_v;
+    off_t = 0.0f;
+}
+
+static inline void inertialize_cubic_update(
+    vec3& out_x, 
+    vec3& out_v,
+    float& off_t,
+    const vec3 off_x,
+    const vec3 off_v,
+    const vec3 in_x, 
+    const vec3 in_v,
+    const float blendtime,
+    const float dt)
+{
+    off_t += dt;
+    
+    vec3 dec_x, dec_v;
+    decayed_offset_cubic(dec_x, dec_v, off_x, off_v, blendtime, off_t);
+    
+    out_x = in_x + dec_x;
+    out_v = in_v + dec_v;
+}
+
+static inline void inertialize_cubic_transition(
+    quat& off_x, 
+    vec3& off_v, 
+    float& off_t,
+    const quat src_x,
+    const vec3 src_v,
+    const quat dst_x,
+    const vec3 dst_v,
+    const float blendtime)
+{
+    quat dec_x; vec3 dec_v;
+    decayed_offset_cubic(dec_x, dec_v, off_x, off_v, blendtime, off_t);
+    
+    off_x = quat_abs(quat_mul(quat_mul(dec_x, src_x), quat_inv(dst_x)));
+    off_v = (dec_v + src_v) - dst_v;
+    off_t = 0.0f;
+}
+
+static inline void inertialize_cubic_update(
+    quat& out_x, 
+    vec3& out_v,
+    float& off_t,
+    const quat off_x,
+    const vec3 off_v,
+    const quat in_x, 
+    const vec3 in_v,
+    const float blendtime,
+    const float dt)
+{
+    off_t += dt;
+    
+    quat dec_x; vec3 dec_v;
+    decayed_offset_cubic(dec_x, dec_v, off_x, off_v, blendtime, off_t);
+    
+    out_x = quat_mul(dec_x, in_x);
+    out_v = dec_v + in_v;
+}
+
+

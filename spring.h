@@ -222,17 +222,17 @@ void decayed_offset_cubic(
     const vec3 init_v,
     const float blendtime, 
     const float dt,
-    const float eps=1e-8)
+    const float eps=1e-8f)
 {
-    float t = clampf(dt / (blendtime + eps), 0, 1);
+    float t = clampf(dt / (blendtime + eps), 0.0f, 1.0f);
 
     vec3 d = init_x;
     vec3 c = init_v * blendtime;
-    vec3 b = -3*d - 2*c;
-    vec3 a = 2*d + c;
+    vec3 b = -3.0f*d - 2.0f*c;
+    vec3 a = 2.0f*d + c;
     
     out_x = a*t*t*t + b*t*t + c*t + d;
-    out_v = blendtime * (3*a*t*t + 2*b*t + c);
+    out_v = (3.0f*a*t*t + 2.0f*b*t + c) / (blendtime + eps);
 }
 
 void decayed_offset_cubic(
@@ -242,17 +242,17 @@ void decayed_offset_cubic(
     const vec3 init_v,
     const float blendtime, 
     const float dt,
-    const float eps=1e-8)
+    const float eps=1e-8f)
 {
-    float t = clampf(dt / (blendtime + eps), 0, 1);
+    float t = clampf(dt / (blendtime + eps), 0.0f, 1.0f);
 
     vec3 d = quat_to_scaled_angle_axis(init_x);
     vec3 c = init_v * blendtime;
-    vec3 b = -3*d - 2*c;
-    vec3 a = 2*d + c;
+    vec3 b = -3.0f*d - 2.0f*c;
+    vec3 a = 2.0f*d + c;
     
     out_x = quat_from_scaled_angle_axis(a*t*t*t + b*t*t + c*t + d);
-    out_v = blendtime * (3*a*t*t + 2*b*t + c);
+    out_v = (3.0f*a*t*t + 2.0f*b*t + c) / (blendtime + eps);
 }
 
 static inline void inertialize_cubic_transition(

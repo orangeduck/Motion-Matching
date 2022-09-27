@@ -6,32 +6,32 @@
 
 //--------------------------------------
 
-static inline float damper_implicit(float x, float g, float halflife, float dt, float eps=1e-5f)
+static inline float damper_exact(float x, float g, float halflife, float dt, float eps=1e-5f)
 {
     return lerpf(x, g, 1.0f - fast_negexpf((LN2f * dt) / (halflife + eps)));
 }
 
-static inline vec3 damper_implicit(vec3 x, vec3 g, float halflife, float dt, float eps=1e-5f)
+static inline vec3 damper_exact(vec3 x, vec3 g, float halflife, float dt, float eps=1e-5f)
 {
     return lerp(x, g, 1.0f - fast_negexpf((LN2f * dt) / (halflife + eps)));
 }
 
-static inline quat damper_implicit(quat x, quat g, float halflife, float dt, float eps=1e-5f)
+static inline quat damper_exact(quat x, quat g, float halflife, float dt, float eps=1e-5f)
 {
     return quat_slerp_shortest_approx(x, g, 1.0f - fast_negexpf((LN2f * dt) / (halflife + eps)));
 }
 
-static inline float damp_adjustment_implicit(float g, float halflife, float dt, float eps=1e-5f)
+static inline float damp_adjustment_exact(float g, float halflife, float dt, float eps=1e-5f)
 {
     return g * (1.0f - fast_negexpf((LN2f * dt) / (halflife + eps)));
 }
 
-static inline vec3 damp_adjustment_implicit(vec3 g, float halflife, float dt, float eps=1e-5f)
+static inline vec3 damp_adjustment_exact(vec3 g, float halflife, float dt, float eps=1e-5f)
 {
     return g * (1.0f - fast_negexpf((LN2f * dt) / (halflife + eps)));
 }
 
-static inline quat damp_adjustment_implicit(quat g, float halflife, float dt, float eps=1e-5f)
+static inline quat damp_adjustment_exact(quat g, float halflife, float dt, float eps=1e-5f)
 {
     return quat_slerp_shortest_approx(quat(), g, 1.0f - fast_negexpf((LN2f * dt) / (halflife + eps)));
 }
@@ -60,7 +60,7 @@ static inline float stiffness_to_frequency(float stiffness)
 
 //--------------------------------------
 
-static inline void simple_spring_damper_implicit(
+static inline void simple_spring_damper_exact(
     float& x, 
     float& v, 
     const float x_goal, 
@@ -76,7 +76,7 @@ static inline void simple_spring_damper_implicit(
     v = eydt*(v - j1*y*dt);
 }
 
-static inline void simple_spring_damper_implicit(
+static inline void simple_spring_damper_exact(
     vec3& x, 
     vec3& v, 
     const vec3 x_goal, 
@@ -92,7 +92,7 @@ static inline void simple_spring_damper_implicit(
     v = eydt*(v - j1*y*dt);
 }
 
-static inline void simple_spring_damper_implicit(
+static inline void simple_spring_damper_exact(
     quat& x, 
     vec3& v, 
     const quat x_goal, 
@@ -112,7 +112,7 @@ static inline void simple_spring_damper_implicit(
 
 //--------------------------------------
 
-static inline void decay_spring_damper_implicit(
+static inline void decay_spring_damper_exact(
     float& x, 
     float& v, 
     const float halflife, 
@@ -126,7 +126,7 @@ static inline void decay_spring_damper_implicit(
     v = eydt*(v - j1*y*dt);
 }
 
-static inline void decay_spring_damper_implicit(
+static inline void decay_spring_damper_exact(
     vec3& x, 
     vec3& v, 
     const float halflife, 
@@ -140,7 +140,7 @@ static inline void decay_spring_damper_implicit(
     v = eydt*(v - j1*y*dt);
 }
 
-static inline void decay_spring_damper_implicit(
+static inline void decay_spring_damper_exact(
     quat& x, 
     vec3& v, 
     const float halflife, 
@@ -181,7 +181,7 @@ static inline void inertialize_update(
     const float halflife,
     const float dt)
 {
-    decay_spring_damper_implicit(off_x, off_v, halflife, dt);
+    decay_spring_damper_exact(off_x, off_v, halflife, dt);
     out_x = in_x + off_x;
     out_v = in_v + off_v;
 }
@@ -208,7 +208,7 @@ static inline void inertialize_update(
     const float halflife,
     const float dt)
 {
-    decay_spring_damper_implicit(off_x, off_v, halflife, dt);
+    decay_spring_damper_exact(off_x, off_v, halflife, dt);
     out_x = quat_mul(off_x, in_x);
     out_v = off_v + in_v;
 }

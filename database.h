@@ -372,7 +372,7 @@ void forward_kinematics_velocity_partial(
         quat_mul_vec3(parent_rotation, local_bone_velocities(bone)) + 
         cross(parent_angular_velocity, quat_mul_vec3(parent_rotation, local_bone_positions(bone)));
     global_bone_rotations(bone) = quat_mul(parent_rotation, local_bone_rotations(bone));
-    global_bone_angular_velocities(bone) = quat_mul_vec3(parent_rotation, local_bone_angular_velocities(bone) + parent_angular_velocity);
+    global_bone_angular_velocities(bone) = quat_mul_vec3(parent_rotation, local_bone_angular_velocities(bone)) + parent_angular_velocity;
     global_bone_computed(bone) = true;
 }
 

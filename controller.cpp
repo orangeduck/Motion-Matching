@@ -200,7 +200,7 @@ void desired_gait_update(
     const float dt,
     const float gait_change_halflife = 0.1f)
 {
-    simple_spring_damper_implicit(
+    simple_spring_damper_exact(
         desired_gait, 
         desired_gait_velocity,
         IsGamepadButtonDown(GAMEPAD_PLAYER, GAMEPAD_BUTTON_RIGHT_FACE_DOWN) ? 1.0f : 0.0f,
@@ -648,7 +648,7 @@ void simulation_rotations_update(
     const float halflife, 
     const float dt)
 {
-    simple_spring_damper_implicit(
+    simple_spring_damper_exact(
         rotation, 
         angular_velocity, 
         desired_rotation, 
@@ -1054,7 +1054,7 @@ vec3 adjust_character_position(
     vec3 difference_position = simulation_position - character_position;
     
     // Damp that difference using the given halflife and dt
-    vec3 adjustment_position = damp_adjustment_implicit(
+    vec3 adjustment_position = damp_adjustment_exact(
         difference_position,
         halflife,
         dt);
@@ -1078,7 +1078,7 @@ quat adjust_character_rotation(
         quat_mul_inv(simulation_rotation, character_rotation)));
     
     // Damp that difference using the given halflife and dt
-    quat adjustment_rotation = damp_adjustment_implicit(
+    quat adjustment_rotation = damp_adjustment_exact(
         difference_rotation,
         halflife,
         dt);
@@ -1096,7 +1096,7 @@ vec3 adjust_character_position_by_velocity(
     const float dt)
 {
     // Find and damp the desired adjustment
-    vec3 adjustment_position = damp_adjustment_implicit(
+    vec3 adjustment_position = damp_adjustment_exact(
         simulation_position - character_position,
         halflife,
         dt);
@@ -1123,7 +1123,7 @@ quat adjust_character_rotation_by_velocity(
     const float dt)
 {
     // Find and damp the desired rotational adjustment
-    quat adjustment_rotation = damp_adjustment_implicit(
+    quat adjustment_rotation = damp_adjustment_exact(
         quat_abs(quat_normalize(quat_mul_inv(
             simulation_rotation, character_rotation))),
         halflife,

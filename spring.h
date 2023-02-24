@@ -16,6 +16,11 @@ static inline vec3 damper_exact(vec3 x, vec3 g, float halflife, float dt, float 
     return lerp(x, g, 1.0f - fast_negexpf((LN2f * dt) / (halflife + eps)));
 }
 
+static inline vec3 damper_decay_exact(vec3 x, float halflife, float dt, float eps=1e-5f)
+{
+    return x * fast_negexpf((LN2f * dt) / (halflife + eps));
+}
+
 static inline quat damper_exact(quat x, quat g, float halflife, float dt, float eps=1e-5f)
 {
     return quat_slerp_shortest_approx(x, g, 1.0f - fast_negexpf((LN2f * dt) / (halflife + eps)));

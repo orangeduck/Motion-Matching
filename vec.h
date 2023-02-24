@@ -103,6 +103,22 @@ struct vec3
     vec3(float _x, float _y, float _z) : x(_x), y(_y), z(_z) {}
     
     float x, y, z;
+    
+    inline vec3 operator+=(vec3 v)
+    {
+        this->x += v.x;
+        this->y += v.y;
+        this->z += v.z;
+        return *this;
+    }
+    
+    inline vec3 operator-=(vec3 v)
+    {
+        this->x -= v.x;
+        this->y -= v.y;
+        this->z -= v.z;
+        return *this;
+    }
 };
 
 static inline vec3 operator+(float s, vec3 v)

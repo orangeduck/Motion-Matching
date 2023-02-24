@@ -23,7 +23,7 @@ from train_common import load_database, load_features, save_network
 
 class Extrapolator(nn.Module):
 
-    def __init__(self, input_size, output_size, hidden_size=256):
+    def __init__(self, input_size, output_size, hidden_size=128):
         super(Extrapolator, self).__init__()
         
         self.linear0 = nn.Linear(input_size, hidden_size)
@@ -31,8 +31,8 @@ class Extrapolator(nn.Module):
         self.linear2 = nn.Linear(hidden_size, output_size)
 
     def forward(self, x):
-        x = F.elu(self.linear0(x))
-        x = F.elu(self.linear1(x))
+        x = F.relu(self.linear0(x))
+        x = F.relu(self.linear1(x))
         return self.linear2(x)
 
 # Training procedure
@@ -68,55 +68,44 @@ if __name__ == '__main__':
     torch.manual_seed(seed)
     torch.set_num_threads(1)
     
-    # Compute 2-component xform
-    
-    Ytxy = quat.to_xform_xy(Yrot)
-    
-    # Compute local root velocity
-    
-    Yrvel = quat.inv_mul_vec(Yrot[:,0], Yvel[:,0])
-    Yrang = quat.inv_mul_vec(Yrot[:,0], Yang[:,0])
-
     # Compute means/stds
 
     extrapolator_mean_in = torch.as_tensor(np.hstack([
         Ypos[:,1:].mean(axis=0).ravel(),
-        Ytxy[:,1:].mean(axis=0).ravel(),
+        quat.to_xform_xy(Yrot)[:,1:].mean(axis=0).ravel(),
         Yvel[:,1:].mean(axis=0).ravel(),
         Yang[:,1:].mean(axis=0).ravel(),
-        Yrvel.mean(axis=0).ravel(),
-        Yrang.mean(axis=0).ravel(),
+        quat.inv_mul_vec(Yrot[:,0], Yvel[:,0]).mean(axis=0).ravel(),
+        quat.inv_mul_vec(Yrot[:,0], Yang[:,0]).mean(axis=0).ravel(),
     ]).astype(np.float32))
     
     extrapolator_std_in = torch.as_tensor(np.hstack([
         Ypos[:,1:].std().repeat((nbones-1)*3),
-        Ytxy[:,1:].std().repeat((nbones-1)*6),
+        quat.to_xform_xy(Yrot)[:,1:].std().repeat((nbones-1)*6),
         Yvel[:,1:].std().repeat((nbones-1)*3),
         Yang[:,1:].std().repeat((nbones-1)*3),
-        Yrvel.std().repeat(3),
-        Yrang.std().repeat(3),
+        quat.inv_mul_vec(Yrot[:,0], Yvel[:,0]).std().repeat(3),
+        quat.inv_mul_vec(Yrot[:,0], Yang[:,0]).std().repeat(3),
     ]).astype(np.float32))
 
     extrapolator_mean_out = torch.as_tensor(np.hstack([
         Yvel[:,1:].mean(axis=0).ravel(),
         Yang[:,1:].mean(axis=0).ravel(),
-        Yrvel.mean(axis=0).ravel(),
-        Yrang.mean(axis=0).ravel(),
+        quat.inv_mul_vec(Yrot[:,0], Yvel[:,0]).mean(axis=0).ravel(),
+        quat.inv_mul_vec(Yrot[:,0], Yang[:,0]).mean(axis=0).ravel(),
     ]).astype(np.float32))
     
     extrapolator_std_out = torch.as_tensor(np.hstack([
         Yvel[:,1:].std(axis=0).ravel(),
         Yang[:,1:].std(axis=0).ravel(),
-        Yrvel.std(axis=0).ravel(),
-        Yrang.std(axis=0).ravel(),
+        quat.inv_mul_vec(Yrot[:,0], Yvel[:,0]).std(axis=0).ravel(),
+        quat.inv_mul_vec(Yrot[:,0], Yang[:,0]).std(axis=0).ravel(),
     ]).astype(np.float32))
     
     Ypos = torch.as_tensor(Ypos)
     Yrot = torch.as_tensor(Yrot)
     Yvel = torch.as_tensor(Yvel)
     Yang = torch.as_tensor(Yang)
-    Yrvel = torch.as_tensor(Yrvel)
-    Yrang = torch.as_tensor(Yrang)
     
     # Make networks
     
@@ -137,75 +126,52 @@ if __name__ == '__main__':
             
             for si, start in enumerate(example_starts):
                 
-                Ygnd_pos = Ypos[start:start+window][:,1:]
-                Ygnd_rot = Yrot[start:start+window][:,1:]
-                Ygnd_vel = Yvel[start:start+window][:,1:]
-                Ygnd_ang = Yang[start:start+window][:,1:]
-                Ygnd_rvel = Yrvel[start:start+window]
-                Ygnd_rang = Yrang[start:start+window]
+                Ygnd_pos = Ypos[start:start+window]
+                Ygnd_rot = Yrot[start:start+window]
+                Ygnd_vel = Yvel[start:start+window]
+                Ygnd_ang = Yang[start:start+window]
                     
-                Ypre_pos = [Ygnd_pos[0]]
-                Ypre_rot = [Ygnd_rot[0]]
-                Ypre_vel = [Ygnd_vel[0]]
-                Ypre_ang = [Ygnd_ang[0]]
-                Ypre_rvel = [Ygnd_rvel[0]]
-                Ypre_rang = [Ygnd_rang[0]]
+                Ytil_pos = [Ygnd_pos[0]]
+                Ytil_rot = [Ygnd_rot[0]]
+                Ytil_vel = [Ygnd_vel[0]]
+                Ytil_ang = [Ygnd_ang[0]]
                 
                 for _ in range(1, window):
                     
                     network_input = torch.cat([
-                        Ypre_pos[-1].reshape([1, (nbones-1) * 3]),
-                        tquat.to_xform_xy(Ypre_rot[-1]).reshape([1, (nbones-1) * 6]),
-                        Ypre_vel[-1].reshape([1, (nbones-1) * 3]),
-                        Ypre_ang[-1].reshape([1, (nbones-1) * 3]),
-                        Ypre_rvel[-1].reshape([1, 3]),
-                        Ypre_rang[-1].reshape([1, 3]),
+                        Ytil_pos[-1][1:].reshape([1, (nbones-1) * 3]),
+                        tquat.to_xform_xy(Ytil_rot[-1][1:]).reshape([1, (nbones-1) * 6]),
+                        Ytil_vel[-1][1:].reshape([1, (nbones-1) * 3]),
+                        Ytil_ang[-1][1:].reshape([1, (nbones-1) * 3]),
+                        tquat.inv_mul_vec(Ytil_rot[-1][0], Ytil_vel[-1][0]).reshape([1, 3]),
+                        tquat.inv_mul_vec(Ytil_rot[-1][0], Ytil_ang[-1][0]).reshape([1, 3]),
                     ], dim=-1)
                     
                     network_output = (network_extrapolator((network_input - extrapolator_mean_in) / extrapolator_std_in) 
                         * extrapolator_std_out + extrapolator_mean_out)
                     
-                    Yout_vel = network_output[:,0*(nbones-1)*3:1*(nbones-1)*3].reshape([nbones-1, 3])
-                    Yout_ang = network_output[:,1*(nbones-1)*3:2*(nbones-1)*3].reshape([nbones-1, 3])
-                    Yout_rvel = network_output[:,2*(nbones-1)*3+0:2*(nbones-1)*3+3].reshape([3])
-                    Yout_rang = network_output[:,2*(nbones-1)*3+3:2*(nbones-1)*3+6].reshape([3])
+                    Yout_part_vel = network_output[:,0*(nbones-1)*3:1*(nbones-1)*3].reshape([nbones-1, 3])
+                    Yout_part_ang = network_output[:,1*(nbones-1)*3:2*(nbones-1)*3].reshape([nbones-1, 3])
+                    Yout_part_rvel = network_output[:,2*(nbones-1)*3+0:2*(nbones-1)*3+3].reshape([3])
+                    Yout_part_rang = network_output[:,2*(nbones-1)*3+3:2*(nbones-1)*3+6].reshape([3])
                     
-                    Ypre_pos.append(Ypre_pos[-1] + dt * Yout_vel)
-                    Ypre_rot.append(tquat.mul(tquat.from_scaled_angle_axis(Yout_ang * dt), Ypre_rot[-1]))
-                    Ypre_vel.append(Yout_vel)
-                    Ypre_ang.append(Yout_ang)
-                    Ypre_rvel.append(Yout_rvel)
-                    Ypre_rang.append(Yout_rang)
+                    Yout_vel = torch.cat([
+                        tquat.mul_vec(Ytil_rot[-1][0], Yout_part_rvel)[None],
+                        Yout_part_vel], dim=0)
                     
-                Ypre_pos = torch.cat([y[None] for y in Ypre_pos], dim=0).cpu().numpy()
-                Ypre_rot = torch.cat([y[None] for y in Ypre_rot], dim=0).cpu().numpy()
-                Ypre_vel = torch.cat([y[None] for y in Ypre_vel], dim=0).cpu().numpy()
-                Ypre_ang = torch.cat([y[None] for y in Ypre_ang], dim=0).cpu().numpy()
-                Ypre_rvel = torch.cat([y[None] for y in Ypre_rvel], dim=0).cpu().numpy()
-                Ypre_rang = torch.cat([y[None] for y in Ypre_rang], dim=0).cpu().numpy()
-                
-                # Integrate root displacement
-                
-                Ygnd_root_pos = Ypos[start:start+window,0].cpu().numpy()
-                Ygnd_root_rot = Yrot[start:start+window,0].cpu().numpy()
-
-                Ygnd_root_pos = quat.inv_mul_vec(Ygnd_root_rot[0:1], Ygnd_root_pos - Ygnd_root_pos[0:1])
-                Ygnd_root_rot = quat.inv_mul(Ygnd_root_rot[0:1], Ygnd_root_rot)
-                
-                Ypre_rootpos = [Ygnd_root_pos[0]]
-                Ypre_rootrot = [Ygnd_root_rot[0]]
-                for i in range(1, Ygnd_pos.shape[0]):
-                    Ypre_rootpos.append(Ypre_rootpos[-1] + quat.mul_vec(Ypre_rootrot[-1], Ypre_rvel[i-1]) * dt)
-                    Ypre_rootrot.append(quat.mul(Ypre_rootrot[-1], quat.from_scaled_angle_axis(quat.mul_vec(Ypre_rootrot[-1], Ypre_rang[i-1]) * dt)))
-                
-                Ypre_rootpos = np.concatenate([p[np.newaxis] for p in Ypre_rootpos])
-                Ypre_rootrot = np.concatenate([r[np.newaxis] for r in Ypre_rootrot])
-                
-                Ypre_pos = np.concatenate([Ypre_rootpos[:,np.newaxis], Ypre_pos], axis=1)
-                Ypre_rot = np.concatenate([Ypre_rootrot[:,np.newaxis], Ypre_rot], axis=1)
-                
-                Ygnd_pos = np.concatenate([Ygnd_root_pos[:,np.newaxis], Ygnd_pos.cpu().numpy()], axis=1)
-                Ygnd_rot = np.concatenate([Ygnd_root_rot[:,np.newaxis], Ygnd_rot.cpu().numpy()], axis=1)
+                    Yout_ang = torch.cat([
+                        tquat.mul_vec(Ytil_rot[-1][0], Yout_part_rang)[None],
+                        Yout_part_ang], dim=0)
+                    
+                    Ytil_pos.append(Ytil_pos[-1] + dt * Yout_vel)
+                    Ytil_rot.append(tquat.mul(tquat.from_scaled_angle_axis(Yout_ang * dt), Ytil_rot[-1]))
+                    Ytil_vel.append(Yout_vel)
+                    Ytil_ang.append(Yout_ang)
+                    
+                Ytil_pos = torch.cat([y[None] for y in Ytil_pos], dim=0).cpu().numpy()
+                Ytil_rot = torch.cat([y[None] for y in Ytil_rot], dim=0).cpu().numpy()
+                Ygnd_pos = Ygnd_pos.cpu().numpy()
+                Ygnd_rot = Ygnd_rot.cpu().numpy()
                 
                 # Write BVH
                 
@@ -219,10 +185,10 @@ if __name__ == '__main__':
                         'order': 'zyx'
                     })
                     
-                    bvh.save('extrapolator_Ypre_%i.bvh' % si, {
-                        'rotations': np.degrees(quat.to_euler(Ypre_rot)),
-                        'positions': 100.0 * Ypre_pos,
-                        'offsets': 100.0 * Ypre_pos[0],
+                    bvh.save('extrapolator_Ytil_%i.bvh' % si, {
+                        'rotations': np.degrees(quat.to_euler(Ytil_rot)),
+                        'positions': 100.0 * Ytil_pos,
+                        'offsets': 100.0 * Ytil_pos[0],
                         'parents': parents,
                         'names': ['joint_%i' % i for i in range(nbones)],
                         'order': 'zyx'
@@ -262,77 +228,89 @@ if __name__ == '__main__':
         
         batch = indices[torch.randint(0, len(indices), size=[batchsize])]
         
-        Ygnd_pos = Ypos[batch][:,:,1:]
-        Ygnd_rot = Yrot[batch][:,:,1:]
-        Ygnd_vel = Yvel[batch][:,:,1:]
-        Ygnd_ang = Yang[batch][:,:,1:]
-        Ygnd_rvel = Yrvel[batch]
-        Ygnd_rang = Yrang[batch]
+        Ygnd_pos = Ypos[batch]
+        Ygnd_rot = Yrot[batch]
+        Ygnd_vel = Yvel[batch]
+        Ygnd_ang = Yang[batch]
         
-        # Predict
+        # Extrapolate
         
-        Ypre_pos = [Ygnd_pos[:,0]]
-        Ypre_rot = [Ygnd_rot[:,0]]
-        Ypre_vel = [Ygnd_vel[:,0]]
-        Ypre_ang = [Ygnd_ang[:,0]]
-        Ypre_rvel = [Ygnd_rvel[:,0]]
-        Ypre_rang = [Ygnd_rang[:,0]]
+        Ytil_pos = [Ygnd_pos[:,0]]
+        Ytil_rot = [Ygnd_rot[:,0]]
+        Ytil_vel = [Ygnd_vel[:,0]]
+        Ytil_ang = [Ygnd_ang[:,0]]
         
         for _ in range(1, window):
             
             network_input = torch.cat([
-                Ypre_pos[-1].reshape([batchsize, (nbones-1) * 3]),
-                tquat.to_xform_xy(Ypre_rot[-1]).reshape([batchsize, (nbones-1) * 6]),
-                Ypre_vel[-1].reshape([batchsize, (nbones-1) * 3]),
-                Ypre_ang[-1].reshape([batchsize, (nbones-1) * 3]),
-                Ypre_rvel[-1].reshape([batchsize, 3]),
-                Ypre_rang[-1].reshape([batchsize, 3]),
+                Ytil_pos[-1][:,1:].reshape([batchsize, (nbones-1) * 3]),
+                tquat.to_xform_xy(Ytil_rot[-1][:,1:]).reshape([batchsize, (nbones-1) * 6]),
+                Ytil_vel[-1][:,1:].reshape([batchsize, (nbones-1) * 3]),
+                Ytil_ang[-1][:,1:].reshape([batchsize, (nbones-1) * 3]),
+                tquat.inv_mul_vec(Ytil_rot[-1][:,0], Ytil_vel[-1][:,0]).reshape([batchsize, 3]),
+                tquat.inv_mul_vec(Ytil_rot[-1][:,0], Ytil_ang[-1][:,0]).reshape([batchsize, 3]),
             ], dim=-1)
             
             network_output = (network_extrapolator((network_input - extrapolator_mean_in) / extrapolator_std_in) 
                 * extrapolator_std_out + extrapolator_mean_out)
             
-            Yout_vel = network_output[:,0*(nbones-1)*3:1*(nbones-1)*3].reshape([batchsize, nbones-1, 3])
-            Yout_ang = network_output[:,1*(nbones-1)*3:2*(nbones-1)*3].reshape([batchsize, nbones-1, 3])
-            Yout_rvel = network_output[:,2*(nbones-1)*3+0:2*(nbones-1)*3+3].reshape([batchsize, 3])
-            Yout_rang = network_output[:,2*(nbones-1)*3+3:2*(nbones-1)*3+6].reshape([batchsize, 3])
+            Yout_part_vel = network_output[:,0*(nbones-1)*3:1*(nbones-1)*3].reshape([batchsize, nbones-1, 3])
+            Yout_part_ang = network_output[:,1*(nbones-1)*3:2*(nbones-1)*3].reshape([batchsize, nbones-1, 3])
+            Yout_part_rvel = network_output[:,2*(nbones-1)*3+0:2*(nbones-1)*3+3].reshape([batchsize, 3])
+            Yout_part_rang = network_output[:,2*(nbones-1)*3+3:2*(nbones-1)*3+6].reshape([batchsize, 3])
             
-            Ypre_pos.append(Ypre_pos[-1] + dt * Yout_vel)
-            Ypre_rot.append(tquat.mul(tquat.from_scaled_angle_axis(Yout_ang * dt), Ypre_rot[-1]))
-            Ypre_vel.append(Yout_vel)
-            Ypre_ang.append(Yout_ang)
-            Ypre_rvel.append(Yout_rvel)
-            Ypre_rang.append(Yout_rang)
+            Yout_vel = torch.cat([
+                tquat.mul_vec(Ytil_rot[-1][:,0], Yout_part_rvel)[:,None],
+                Yout_part_vel], dim=1)
+                
+            Yout_ang = torch.cat([
+                tquat.mul_vec(Ytil_rot[-1][:,0], Yout_part_rang)[:,None],
+                Yout_part_ang], dim=1)
             
-        Ypre_pos = torch.cat([y[:,None] for y in Ypre_pos], dim=1)
-        Ypre_rot = torch.cat([y[:,None] for y in Ypre_rot], dim=1)
-        Ypre_vel = torch.cat([y[:,None] for y in Ypre_vel], dim=1)
-        Ypre_ang = torch.cat([y[:,None] for y in Ypre_ang], dim=1)
-        Ypre_rvel = torch.cat([y[:,None] for y in Ypre_rvel], dim=1)
-        Ypre_rang = torch.cat([y[:,None] for y in Ypre_rang], dim=1)
+            Yout_pos = Ytil_pos[-1] + dt * Yout_vel
+            Yout_rot = tquat.mul(tquat.from_scaled_angle_axis(Yout_ang * dt), Ytil_rot[-1])
+            
+            Ytil_pos.append(Yout_pos)
+            Ytil_rot.append(Yout_rot)
+            Ytil_vel.append(Yout_vel)
+            Ytil_ang.append(Yout_ang)
+            
+        Ytil_pos = torch.cat([y[:,None] for y in Ytil_pos], dim=1)
+        Ytil_rot = torch.cat([y[:,None] for y in Ytil_rot], dim=1)
+        Ytil_vel = torch.cat([y[:,None] for y in Ytil_vel], dim=1)
+        Ytil_ang = torch.cat([y[:,None] for y in Ytil_ang], dim=1)
         
-        # Do FK
+        # Compute World Space
         
-        Qgnd_rot, Qgnd_pos, Qgnd_vel, Qgnd_ang = tquat.fk_vel(
+        Ggnd_rot, Ggnd_pos, Ggnd_vel, Ggnd_ang = tquat.fk_vel(
             Ygnd_rot, Ygnd_pos, Ygnd_vel, Ygnd_ang, parents)
         
-        Qpre_rot, Qpre_pos, Qpre_vel, Qpre_ang = tquat.fk_vel(
-            Ypre_rot, Ypre_pos, Ypre_vel, Ypre_ang, parents)
+        Gtil_rot, Gtil_pos, Gtil_vel, Gtil_ang = tquat.fk_vel(
+            Ytil_rot, Ytil_pos, Ytil_vel, Ytil_ang, parents)
+        
+        # Convert to character space
+
+        Qtil_pos = tquat.inv_mul_vec(Gtil_rot[:,:,0:1], Gtil_pos - Gtil_pos[:,:,0:1])
+        Qtil_rot = tquat.inv_mul(Gtil_rot[:,:,0:1], Gtil_rot)
+        Qtil_vel = tquat.inv_mul_vec(Gtil_rot[:,:,0:1], Gtil_vel)
+        Qtil_ang = tquat.inv_mul_vec(Gtil_rot[:,:,0:1], Gtil_ang)
+        
+        Qgnd_pos = tquat.inv_mul_vec(Ggnd_rot[:,:,0:1], Ggnd_pos - Ggnd_pos[:,:,0:1])
+        Qgnd_rot = tquat.inv_mul(Ggnd_rot[:,:,0:1], Ggnd_rot)
+        Qgnd_vel = tquat.inv_mul_vec(Ggnd_rot[:,:,0:1], Ggnd_vel)
+        Qgnd_ang = tquat.inv_mul_vec(Ggnd_rot[:,:,0:1], Ggnd_ang)
         
         # Compute losses
         
-        loss_loc_pos = torch.mean(50.0 * torch.abs(Ypre_pos - Ygnd_pos))
-        loss_loc_rot = torch.mean(15.0 * torch.abs(tquat.to_xform(Ypre_rot) - tquat.to_xform(Ygnd_rot)))
-        loss_loc_vel = torch.mean( 5.0 * torch.abs(Ypre_vel - Ygnd_vel))
-        loss_loc_ang = torch.mean( 1.5 * torch.abs(Ypre_ang - Ygnd_ang))
+        loss_loc_pos = torch.mean(50.0 * torch.abs(Ytil_pos[:,:,1:] - Ygnd_pos[:,:,1:]))
+        loss_loc_rot = torch.mean(15.0 * torch.abs(tquat.to_xform(Ytil_rot[:,:,1:]) - tquat.to_xform(Ygnd_rot[:,:,1:])))
+        loss_loc_vel = torch.mean( 5.0 * torch.abs(Ytil_vel[:,:,1:] - Ygnd_vel[:,:,1:]))
+        loss_loc_ang = torch.mean( 1.5 * torch.abs(Ytil_ang[:,:,1:] - Ygnd_ang[:,:,1:]))
         
-        loss_chr_pos = torch.mean( 8.0 * torch.abs(Qpre_pos - Qgnd_pos))
-        loss_chr_rot = torch.mean( 5.0 * torch.abs(tquat.to_xform(Qpre_rot) - tquat.to_xform(Qgnd_rot)))
-        loss_chr_vel = torch.mean( 1.2 * torch.abs(Qpre_vel - Qgnd_vel))
-        loss_chr_ang = torch.mean( 0.5 * torch.abs(Qpre_ang - Qgnd_ang))
-        
-        loss_rvel = torch.mean( 0.5 * torch.abs(Ypre_rvel - Ygnd_rvel))
-        loss_rang = torch.mean( 0.5 * torch.abs(Ypre_rang - Ygnd_rang))
+        loss_chr_pos = torch.mean(15.0 * torch.abs(Qtil_pos - Qgnd_pos))
+        loss_chr_rot = torch.mean( 7.5 * torch.abs(tquat.to_xform(Qtil_rot) - tquat.to_xform(Qgnd_rot)))
+        loss_chr_vel = torch.mean( 1.5 * torch.abs(Qtil_vel - Qgnd_vel))
+        loss_chr_ang = torch.mean( 0.8 * torch.abs(Qtil_ang - Qgnd_ang))
         
         loss = (
             loss_loc_pos + 
@@ -342,9 +320,7 @@ if __name__ == '__main__':
             loss_chr_pos + 
             loss_chr_rot + 
             loss_chr_vel + 
-            loss_chr_ang + 
-            loss_rvel + 
-            loss_rang)
+            loss_chr_ang)
         
         # Backprop
         
@@ -365,8 +341,6 @@ if __name__ == '__main__':
             'loss_chr_rot': loss_chr_rot.item(),
             'loss_chr_vel': loss_chr_vel.item(),
             'loss_chr_ang': loss_chr_ang.item(),
-            'loss_rvel': loss_rvel.item(),
-            'loss_rang': loss_rang.item(),
         }, i)
         
         if rolling_loss is None:

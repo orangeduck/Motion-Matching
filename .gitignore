@@ -3,6 +3,7 @@ controller.data
 controller.js
 controller.html
 controller.wasm
+extrapolation.exe
 *__pycache__*
 *.png
 *.bvh

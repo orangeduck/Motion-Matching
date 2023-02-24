@@ -4,6 +4,11 @@
 #include <string.h>
 #include <stdio.h>
 
+template<typename T> struct slice1d;
+template<typename T> struct slice2d;
+template<typename T> struct array1d;
+template<typename T> struct array2d;
+
 //--------------------------------------
 
 // Basic type representing a pointer to some
@@ -23,6 +28,9 @@ struct slice1d
     void zero() { memset((char*)data, 0, sizeof(T) * size); }
     void set(const T& x) { for (int i = 0; i < size; i++) { data[i] = x; } }
     
+    slice1d& operator=(const slice1d<T>& rhs) { assert(size == rhs.size); memcpy(data, rhs.data, rhs.size * sizeof(T)); return *this; };
+    slice1d& operator=(const array1d<T>& rhs) { assert(size == rhs.size); memcpy(data, rhs.data, rhs.size * sizeof(T)); return *this; };
+    
     inline T& operator()(int i) const { assert(i >= 0 && i < size); return data[i]; }
 };
 
@@ -37,6 +45,9 @@ struct slice2d
 
     void zero() { memset((char*)data, 0, sizeof(T) * rows * cols); }
     void set(const T& x) { for (int i = 0; i < rows * cols; i++) { data[i] = x; } }
+    
+    slice2d& operator=(const slice2d<T>& rhs) { assert(rows == rhs.rows); assert(cols == rhs.cols); memcpy(data, rhs.data, rhs.rows * rhs.cols * sizeof(T)); return *this; };
+    slice2d& operator=(const array2d<T>& rhs) { assert(rows == rhs.rows); assert(cols == rhs.cols); memcpy(data, rhs.data, rhs.rows * rhs.cols * sizeof(T)); return *this; };
     
     inline slice1d<T> operator()(int i) const { assert(i >= 0 && i < rows); return slice1d<T>(cols, &data[i * cols]); }
     inline T& operator()(int i, int j) const { assert(i >= 0 && i < rows && j >= 0 && j < cols); return data[i * cols + j]; }

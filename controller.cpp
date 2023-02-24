@@ -18,6 +18,8 @@ extern "C"
 #include "database.h"
 #include "nnet.h"
 #include "lmm.h"
+#include "extrapolator.h"
+
 
 #include <initializer_list>
 #include <functional>
@@ -276,235 +278,209 @@ quat desired_rotation_update(
 
 //--------------------------------------
 
-// Moving the root is a little bit difficult when we have the
-// inertializer set up in the way we do. Essentially we need
-// to also make sure to adjust all of the locations where 
-// we are transforming the data to and from as well as the 
-// offsets being blended out
-void inertialize_root_adjust(
-    vec3& offset_position,
-    vec3& transition_src_position,
-    quat& transition_src_rotation,
-    vec3& transition_dst_position,
-    quat& transition_dst_rotation,
-    vec3& position,
-    quat& rotation,
-    const vec3 input_position,
-    const quat input_rotation)
-{
-    // Find the position difference and add it to the state and transition location
-    vec3 position_difference = input_position - position;
-    position = position_difference + position;
-    transition_dst_position = position_difference + transition_dst_position;
-    
-    // Find the point at which we want to now transition from in the src data
-    transition_src_position = transition_src_position + quat_mul_vec3(transition_src_rotation,
-        quat_inv_mul_vec3(transition_dst_rotation, position - offset_position - transition_dst_position));
-    transition_dst_position = position;
-    offset_position = vec3();
-    
-    // Find the rotation difference. We need to normalize here or some error can accumulate 
-    // over time during adjustment.
-    quat rotation_difference = quat_normalize(quat_mul_inv(input_rotation, rotation));
-    
-    // Apply the rotation difference to the current rotation and transition location
-    rotation = quat_mul(rotation_difference, rotation);
-    transition_dst_rotation = quat_mul(rotation_difference, transition_dst_rotation);
-}
-
-void inertialize_pose_reset(
-    slice1d<vec3> bone_offset_positions,
-    slice1d<vec3> bone_offset_velocities,
-    slice1d<quat> bone_offset_rotations,
-    slice1d<vec3> bone_offset_angular_velocities,
-    vec3& transition_src_position,
-    quat& transition_src_rotation,
-    vec3& transition_dst_position,
-    quat& transition_dst_rotation,
-    const vec3 root_position,
-    const quat root_rotation)
-{
-    bone_offset_positions.zero();
-    bone_offset_velocities.zero();
-    bone_offset_rotations.set(quat());
-    bone_offset_angular_velocities.zero();
-    
-    transition_src_position = root_position;
-    transition_src_rotation = root_rotation;
-    transition_dst_position = vec3();
-    transition_dst_rotation = quat();
-}
-
-// This function transitions the inertializer for 
-// the full character. It takes as input the current 
-// offsets, as well as the root transition locations,
-// current root state, and the full pose information 
-// for the pose being transitioned from (src) as well 
-// as the pose being transitioned to (dst) in their
-// own animation spaces.
-void inertialize_pose_transition(
-    slice1d<vec3> bone_offset_positions,
-    slice1d<vec3> bone_offset_velocities,
-    slice1d<quat> bone_offset_rotations,
-    slice1d<vec3> bone_offset_angular_velocities,
-    vec3& transition_src_position,
-    quat& transition_src_rotation,
-    vec3& transition_dst_position,
-    quat& transition_dst_rotation,
-    const vec3 root_position,
-    const vec3 root_velocity,
-    const quat root_rotation,
-    const vec3 root_angular_velocity,
-    const slice1d<vec3> bone_src_positions,
-    const slice1d<vec3> bone_src_velocities,
-    const slice1d<quat> bone_src_rotations,
-    const slice1d<vec3> bone_src_angular_velocities,
-    const slice1d<vec3> bone_dst_positions,
-    const slice1d<vec3> bone_dst_velocities,
-    const slice1d<quat> bone_dst_rotations,
-    const slice1d<vec3> bone_dst_angular_velocities)
-{
-    // First we record the root position and rotation
-    // in the animation data for the source and destination
-    // animation
-    transition_dst_position = root_position;
-    transition_dst_rotation = root_rotation;
-    transition_src_position = bone_dst_positions(0);
-    transition_src_rotation = bone_dst_rotations(0);
-    
-    // We then find the velocities so we can transition the 
-    // root inertiaizers
-    vec3 world_space_dst_velocity = quat_mul_vec3(transition_dst_rotation, 
-        quat_inv_mul_vec3(transition_src_rotation, bone_dst_velocities(0)));
-    
-    vec3 world_space_dst_angular_velocity = quat_mul_vec3(transition_dst_rotation, 
-        quat_inv_mul_vec3(transition_src_rotation, bone_dst_angular_velocities(0)));
-    
-    // Transition inertializers recording the offsets for 
-    // the root joint
-    inertialize_transition(
-        bone_offset_positions(0),
-        bone_offset_velocities(0),
-        root_position,
-        root_velocity,
-        root_position,
-        world_space_dst_velocity);
-        
-    inertialize_transition(
-        bone_offset_rotations(0),
-        bone_offset_angular_velocities(0),
-        root_rotation,
-        root_angular_velocity,
-        root_rotation,
-        world_space_dst_angular_velocity);
-    
-    // Transition all the inertializers for each other bone
-    for (int i = 1; i < bone_offset_positions.size; i++)
-    {
-        inertialize_transition(
-            bone_offset_positions(i),
-            bone_offset_velocities(i),
-            bone_src_positions(i),
-            bone_src_velocities(i),
-            bone_dst_positions(i),
-            bone_dst_velocities(i));
-            
-        inertialize_transition(
-            bone_offset_rotations(i),
-            bone_offset_angular_velocities(i),
-            bone_src_rotations(i),
-            bone_src_angular_velocities(i),
-            bone_dst_rotations(i),
-            bone_dst_angular_velocities(i));
-    }
-}
-
-// This function updates the inertializer states. Here 
-// it outputs the smoothed animation (input plus offset) 
-// as well as updating the offsets themselves. It takes 
-// as input the current playing animation as well as the 
-// root transition locations, a halflife, and a dt
-void inertialize_pose_update(
+void blend_pose_and_integrate_root(
     slice1d<vec3> bone_positions,
     slice1d<vec3> bone_velocities,
     slice1d<quat> bone_rotations,
     slice1d<vec3> bone_angular_velocities,
-    slice1d<vec3> bone_offset_positions,
-    slice1d<vec3> bone_offset_velocities,
-    slice1d<quat> bone_offset_rotations,
-    slice1d<vec3> bone_offset_angular_velocities,
+    const slice1d<vec3> bone_lhs_positions,
+    const slice1d<vec3> bone_lhs_velocities,
+    const slice1d<quat> bone_lhs_rotations,
+    const slice1d<vec3> bone_lhs_angular_velocities,
+    const slice1d<vec3> bone_rhs_positions,
+    const slice1d<vec3> bone_rhs_velocities,
+    const slice1d<quat> bone_rhs_rotations,
+    const slice1d<vec3> bone_rhs_angular_velocities,
+    const float alpha,
+    const float dt)
+{
+    for (int i = 1; i < bone_positions.size; i++)
+    {
+        bone_positions(i) = lerp(bone_lhs_positions(i), bone_rhs_positions(i), alpha);
+        bone_velocities(i) = lerp(bone_lhs_velocities(i), bone_rhs_velocities(i), alpha);
+        bone_rotations(i) = quat_slerp_shortest_approx(bone_lhs_rotations(i), bone_rhs_rotations(i), alpha);
+        bone_angular_velocities(i) = lerp(bone_lhs_angular_velocities(i), bone_rhs_angular_velocities(i), alpha);
+    }
+    
+    vec3 local_root_velocity_input = quat_inv_mul_vec3(bone_lhs_rotations(0), bone_lhs_velocities(0));
+    vec3 local_root_angular_velocity_input = quat_inv_mul_vec3(bone_lhs_rotations(0), bone_lhs_angular_velocities(0));
+
+    vec3 local_root_velocity_src = quat_inv_mul_vec3(bone_rhs_rotations(0), bone_rhs_velocities(0));
+    vec3 local_root_angular_velocity_src = quat_inv_mul_vec3(bone_rhs_rotations(0), bone_rhs_angular_velocities(0));
+    
+    bone_velocities(0) = quat_mul_vec3(bone_rotations(0), lerp(local_root_velocity_input, local_root_velocity_src, alpha));
+    bone_angular_velocities(0) = quat_mul_vec3(bone_rotations(0), lerp(local_root_angular_velocity_input, local_root_angular_velocity_src, alpha));
+    bone_positions(0) = bone_positions(0) + dt * bone_velocities(0);
+    bone_rotations(0) = quat_mul(quat_from_scaled_angle_axis(dt * bone_angular_velocities(0)), bone_rotations(0));
+}
+
+void copy_pose_and_integrate_root(
+    slice1d<vec3> bone_positions,
+    slice1d<vec3> bone_velocities,
+    slice1d<quat> bone_rotations,
+    slice1d<vec3> bone_angular_velocities,
     const slice1d<vec3> bone_input_positions,
     const slice1d<vec3> bone_input_velocities,
     const slice1d<quat> bone_input_rotations,
     const slice1d<vec3> bone_input_angular_velocities,
-    const vec3 transition_src_position,
-    const quat transition_src_rotation,
-    const vec3 transition_dst_position,
-    const quat transition_dst_rotation,
-    const float halflife,
     const float dt)
 {
-    // First we find the next root position, velocity, rotation
-    // and rotational velocity in the world space by transforming 
-    // the input animation from it's animation space into the 
-    // space of the currently playing animation.
-    vec3 world_space_position = quat_mul_vec3(transition_dst_rotation, 
-        quat_inv_mul_vec3(transition_src_rotation, 
-            bone_input_positions(0) - transition_src_position)) + transition_dst_position;
-    
-    vec3 world_space_velocity = quat_mul_vec3(transition_dst_rotation, 
-        quat_inv_mul_vec3(transition_src_rotation, bone_input_velocities(0)));
-    
-    // Normalize here because quat inv mul can sometimes produce 
-    // unstable returns when the two rotations are very close.
-    quat world_space_rotation = quat_normalize(quat_mul(transition_dst_rotation, 
-        quat_inv_mul(transition_src_rotation, bone_input_rotations(0))));
-    
-    vec3 world_space_angular_velocity = quat_mul_vec3(transition_dst_rotation, 
-        quat_inv_mul_vec3(transition_src_rotation, bone_input_angular_velocities(0)));
-    
-    // Then we update these two inertializers with these new world space inputs
-    inertialize_update(
-        bone_positions(0),
-        bone_velocities(0),
-        bone_offset_positions(0),
-        bone_offset_velocities(0),
-        world_space_position,
-        world_space_velocity,
-        halflife,
-        dt);
-        
-    inertialize_update(
-        bone_rotations(0),
-        bone_angular_velocities(0),
-        bone_offset_rotations(0),
-        bone_offset_angular_velocities(0),
-        world_space_rotation,
-        world_space_angular_velocity,
-        halflife,
-        dt);        
-    
-    // Then we update the inertializers for the rest of the bones
     for (int i = 1; i < bone_positions.size; i++)
     {
-        inertialize_update(
-            bone_positions(i),
-            bone_velocities(i),
-            bone_offset_positions(i),
-            bone_offset_velocities(i),
-            bone_input_positions(i),
-            bone_input_velocities(i),
-            halflife,
+        bone_positions(i) = bone_input_positions(i);
+        bone_velocities(i) = bone_input_velocities(i);
+        bone_rotations(i) = bone_input_rotations(i);
+        bone_angular_velocities(i) = bone_input_angular_velocities(i);
+    }
+    
+    vec3 local_root_velocity = quat_inv_mul_vec3(bone_input_rotations(0), bone_input_velocities(0));
+    vec3 local_root_angular_velocity = quat_inv_mul_vec3(bone_input_rotations(0), bone_input_angular_velocities(0));
+    
+    bone_velocities(0) = quat_mul_vec3(bone_rotations(0), local_root_velocity);
+    bone_angular_velocities(0) = quat_mul_vec3(bone_rotations(0), local_root_angular_velocity);
+    bone_positions(0) = bone_positions(0) + dt * bone_velocities(0);
+    bone_rotations(0) = quat_mul(quat_from_scaled_angle_axis(dt * bone_angular_velocities(0)), bone_rotations(0));
+}
+
+void dead_blending_reset(float& src_blend_time)
+{
+    src_blend_time = FLT_MAX;
+}
+
+void dead_blending_transition(
+    slice1d<vec3> bone_src_positions,
+    slice1d<vec3> bone_src_velocities,
+    slice1d<quat> bone_src_rotations,
+    slice1d<vec3> bone_src_angular_velocities,
+    float& src_blend_time,
+    const slice1d<vec3> bone_positions,
+    const slice1d<vec3> bone_velocities,
+    const slice1d<quat> bone_rotations,
+    const slice1d<vec3> bone_angular_velocities)
+{
+    bone_src_positions = bone_positions;
+    bone_src_velocities = bone_velocities;
+    bone_src_rotations = bone_rotations;
+    bone_src_angular_velocities = bone_angular_velocities;
+    src_blend_time = 0.0f;
+}
+
+void dead_blending_root_adjust(
+    slice1d<vec3> bone_src_positions,
+    slice1d<vec3> bone_src_velocities,
+    slice1d<quat> bone_src_rotations,
+    slice1d<vec3> bone_src_angular_velocities,
+    slice1d<vec3> bone_positions,
+    slice1d<vec3> bone_velocities,
+    slice1d<quat> bone_rotations,
+    slice1d<vec3> bone_angular_velocities,
+    const vec3 input_position,
+    const quat input_rotation)
+{
+    vec3 position_difference = input_position - bone_positions(0);
+    quat rotation_difference = quat_normalize(quat_mul_inv(input_rotation, bone_rotations(0)));
+    
+    bone_positions(0) = bone_positions(0) + position_difference;
+    bone_velocities(0) = quat_mul_vec3(rotation_difference, bone_velocities(0));
+    bone_rotations(0) = quat_mul(rotation_difference, bone_rotations(0));
+    bone_angular_velocities(0) = quat_mul_vec3(rotation_difference, bone_angular_velocities(0));
+
+    bone_src_positions(0) = bone_src_positions(0) + position_difference;
+    bone_src_velocities(0) = quat_mul_vec3(rotation_difference, bone_src_velocities(0));
+    bone_src_rotations(0) = quat_mul(rotation_difference, bone_src_rotations(0));
+    bone_src_angular_velocities(0) = quat_mul_vec3(rotation_difference, bone_src_angular_velocities(0));
+}
+
+static inline float smoothstep(float x)
+{
+    x = clampf(x, 0.0f, 1.0f);
+    return x * x * (3.0f - 2.0f * x);
+}
+
+void dead_blending_update(
+    slice1d<vec3> bone_positions,
+    slice1d<vec3> bone_velocities,
+    slice1d<quat> bone_rotations,
+    slice1d<vec3> bone_angular_velocities,
+    slice1d<vec3> bone_src_positions,
+    slice1d<vec3> bone_src_velocities,
+    slice1d<quat> bone_src_rotations,
+    slice1d<vec3> bone_src_angular_velocities,
+    float& src_blend_time,
+    const slice1d<vec3> bone_input_positions,
+    const slice1d<vec3> bone_input_velocities,
+    const slice1d<quat> bone_input_rotations,
+    const slice1d<vec3> bone_input_angular_velocities,
+    int extrapolation_method,
+    const float root_halflife,
+    const float bounce_halflife,
+    const float halflife,
+    const slice1d<quat> reference_rotations,
+    const slice1d<vec3> limit_positions,
+    const slice1d<mat3> limit_rotations,
+    const slice1d<vec3> kdop_axes,
+    const slice2d<float> kdop_limit_mins,
+    const slice2d<float> kdop_limit_maxs,
+    const float bounce_strength,
+    nnet_evaluation& evaluation,
+    const nnet& nn,
+    const float blend_duration,
+    const float dt,
+    const float eps=1e-8f)
+{
+    if (src_blend_time < blend_duration)
+    {        
+          extrapolate(
+              bone_src_positions,
+              bone_src_velocities,
+              bone_src_rotations,
+              bone_src_angular_velocities,
+              extrapolation_method,
+              root_halflife,
+              bounce_halflife,
+              halflife,
+              reference_rotations,
+              limit_positions,
+              limit_rotations,
+              kdop_axes,
+              kdop_limit_mins,
+              kdop_limit_maxs,
+              bounce_strength,
+              evaluation,
+              nn,
+              dt);
+      
+        float alpha = smoothstep(src_blend_time / maxf(blend_duration, eps));
+
+        blend_pose_and_integrate_root(
+            bone_positions,
+            bone_velocities,
+            bone_rotations,
+            bone_angular_velocities,
+            bone_src_positions,
+            bone_src_velocities,
+            bone_src_rotations,
+            bone_src_angular_velocities,
+            bone_input_positions,
+            bone_input_velocities,
+            bone_input_rotations,
+            bone_input_angular_velocities,
+            alpha,
             dt);
-            
-        inertialize_update(
-            bone_rotations(i),
-            bone_angular_velocities(i),
-            bone_offset_rotations(i),
-            bone_offset_angular_velocities(i),
-            bone_input_rotations(i),
-            bone_input_angular_velocities(i),
-            halflife,
+        
+        src_blend_time += dt;
+    }
+    else
+    {
+        copy_pose_and_integrate_root(
+            bone_positions,
+            bone_velocities,
+            bone_rotations,
+            bone_angular_velocities,
+            bone_input_positions,
+            bone_input_velocities,
+            bone_input_rotations,
+            bone_input_angular_velocities,
             dt);
     }
 }
@@ -1279,10 +1255,17 @@ int main(void)
         
     database_save_matching_features(db, "./resources/features.bin");
    
-    // Pose & Inertializer Data
+    // Pose & Dead Blending Data
     
     int frame_index = db.range_starts(0);
-    float inertialize_blending_halflife = 0.1f;
+    float dead_blend_time = 0.2f;
+
+    int extrapolation_method = 0;
+    bool extrapolation_method_edit = false; 
+    float extrapolation_root_halflife = 5.0f;
+    float extrapolation_halflife = 0.3f;
+    float extrapolation_bounce_halflife = 0.5f;    
+    float extrapolation_bounce_strength = 10.0f;
 
     array1d<vec3> curr_bone_positions = db.bone_positions(frame_index);
     array1d<vec3> curr_bone_velocities = db.bone_velocities(frame_index);
@@ -1290,21 +1273,16 @@ int main(void)
     array1d<vec3> curr_bone_angular_velocities = db.bone_angular_velocities(frame_index);
     array1d<bool> curr_bone_contacts = db.contact_states(frame_index);
 
-    array1d<vec3> trns_bone_positions = db.bone_positions(frame_index);
-    array1d<vec3> trns_bone_velocities = db.bone_velocities(frame_index);
-    array1d<quat> trns_bone_rotations = db.bone_rotations(frame_index);
-    array1d<vec3> trns_bone_angular_velocities = db.bone_angular_velocities(frame_index);
-    array1d<bool> trns_bone_contacts = db.contact_states(frame_index);
-
+    array1d<vec3> src_bone_positions = db.bone_positions(frame_index);
+    array1d<vec3> src_bone_velocities = db.bone_velocities(frame_index);
+    array1d<quat> src_bone_rotations = db.bone_rotations(frame_index);
+    array1d<vec3> src_bone_angular_velocities = db.bone_angular_velocities(frame_index);
+    float src_blend_time = FLT_MAX;
+    
     array1d<vec3> bone_positions = db.bone_positions(frame_index);
     array1d<vec3> bone_velocities = db.bone_velocities(frame_index);
     array1d<quat> bone_rotations = db.bone_rotations(frame_index);
     array1d<vec3> bone_angular_velocities = db.bone_angular_velocities(frame_index);
-    
-    array1d<vec3> bone_offset_positions(db.nbones());
-    array1d<vec3> bone_offset_velocities(db.nbones());
-    array1d<quat> bone_offset_rotations(db.nbones());
-    array1d<vec3> bone_offset_angular_velocities(db.nbones());
     
     array1d<vec3> global_bone_positions(db.nbones());
     array1d<vec3> global_bone_velocities(db.nbones());
@@ -1312,43 +1290,8 @@ int main(void)
     array1d<vec3> global_bone_angular_velocities(db.nbones());
     array1d<bool> global_bone_computed(db.nbones());
     
-    vec3 transition_src_position;
-    quat transition_src_rotation;
-    vec3 transition_dst_position;
-    quat transition_dst_rotation;
-    
-    inertialize_pose_reset(
-        bone_offset_positions,
-        bone_offset_velocities,
-        bone_offset_rotations,
-        bone_offset_angular_velocities,
-        transition_src_position,
-        transition_src_rotation,
-        transition_dst_position,
-        transition_dst_rotation,
-        bone_positions(0),
-        bone_rotations(0));
-    
-    inertialize_pose_update(
-        bone_positions,
-        bone_velocities,
-        bone_rotations,
-        bone_angular_velocities,
-        bone_offset_positions,
-        bone_offset_velocities,
-        bone_offset_rotations,
-        bone_offset_angular_velocities,
-        db.bone_positions(frame_index),
-        db.bone_velocities(frame_index),
-        db.bone_rotations(frame_index),
-        db.bone_angular_velocities(frame_index),
-        transition_src_position,
-        transition_src_rotation,
-        transition_dst_position,
-        transition_dst_rotation,
-        inertialize_blending_halflife,
-        0.0f);
-        
+    dead_blending_reset(src_blend_time);
+
     // Trajectory & Gameplay Data
     
     float search_time = 0.1f;
@@ -1492,6 +1435,37 @@ int main(void)
     array1d<float> features_curr = db.features(frame_index);
     array1d<float> latent_proj(32); latent_proj.zero();
     array1d<float> latent_curr(32); latent_curr.zero();
+    
+    // Joint Limits
+    
+    array1d<vec3> reference_positions;
+    array1d<quat> reference_rotations;
+    array1d<vec3> limit_positions;
+    array1d<mat3> limit_rotations;
+    array1d<vec3> kdop_axes;
+    array2d<float> kdop_limit_mins;
+    array2d<float> kdop_limit_maxs;
+    
+    FILE* f = fopen("resources/limits_kdop.bin", "rb");
+    assert(f != NULL);
+    
+    array1d_read(reference_positions, f);
+    array1d_read(reference_rotations, f);
+    array1d_read(limit_positions, f);
+    array1d_read(limit_rotations, f);
+    array1d_read(kdop_axes, f);
+    array2d_read(kdop_limit_mins, f);
+    array2d_read(kdop_limit_maxs, f);
+    
+    fclose(f);
+    
+    // Extrapolator
+    
+    nnet extrapolator;    
+    nnet_load(extrapolator, "./resources/extrapolator.bin");
+    
+    nnet_evaluation extrapolator_evaluation;
+    extrapolator_evaluation.resize(extrapolator);
     
     // Go
 
@@ -1657,43 +1631,16 @@ int main(void)
                 // If projection is sufficiently different from current
                 if (transition)
                 {   
-                    // Evaluate pose for projected features
-                    decompressor_evaluate(
-                        trns_bone_positions,
-                        trns_bone_velocities,
-                        trns_bone_rotations,
-                        trns_bone_angular_velocities,
-                        trns_bone_contacts,
-                        decompressor_evaluation,
-                        features_proj,
-                        latent_proj,
-                        curr_bone_positions(0),
-                        curr_bone_rotations(0),
-                        decompressor,
-                        dt);
-                    
-                    // Transition inertializer to this pose
-                    inertialize_pose_transition(
-                        bone_offset_positions,
-                        bone_offset_velocities,
-                        bone_offset_rotations,
-                        bone_offset_angular_velocities,
-                        transition_src_position,
-                        transition_src_rotation,
-                        transition_dst_position,
-                        transition_dst_rotation,
-                        bone_positions(0),
-                        bone_velocities(0),
-                        bone_rotations(0),
-                        bone_angular_velocities(0),
-                        curr_bone_positions,
-                        curr_bone_velocities,
-                        curr_bone_rotations,
-                        curr_bone_angular_velocities,
-                        trns_bone_positions,
-                        trns_bone_velocities,
-                        trns_bone_rotations,
-                        trns_bone_angular_velocities);
+                    dead_blending_transition(
+                        src_bone_positions,
+                        src_bone_velocities,
+                        src_bone_rotations,
+                        src_bone_angular_velocities,
+                        src_blend_time,
+                        bone_positions,
+                        bone_velocities,
+                        bone_rotations,
+                        bone_angular_velocities);
                     
                     // Update current features and latents
                     features_curr = features_proj;
@@ -1717,32 +1664,16 @@ int main(void)
                 
                 if (best_index != frame_index)
                 {
-                    trns_bone_positions = db.bone_positions(best_index);
-                    trns_bone_velocities = db.bone_velocities(best_index);
-                    trns_bone_rotations = db.bone_rotations(best_index);
-                    trns_bone_angular_velocities = db.bone_angular_velocities(best_index);
-                    
-                    inertialize_pose_transition(
-                        bone_offset_positions,
-                        bone_offset_velocities,
-                        bone_offset_rotations,
-                        bone_offset_angular_velocities,
-                        transition_src_position,
-                        transition_src_rotation,
-                        transition_dst_position,
-                        transition_dst_rotation,
-                        bone_positions(0),
-                        bone_velocities(0),
-                        bone_rotations(0),
-                        bone_angular_velocities(0),
-                        curr_bone_positions,
-                        curr_bone_velocities,
-                        curr_bone_rotations,
-                        curr_bone_angular_velocities,
-                        trns_bone_positions,
-                        trns_bone_velocities,
-                        trns_bone_rotations,
-                        trns_bone_angular_velocities);
+                    dead_blending_transition(
+                        src_bone_positions,
+                        src_bone_velocities,
+                        src_bone_rotations,
+                        src_bone_angular_velocities,
+                        src_blend_time,
+                        bone_positions,
+                        bone_velocities,
+                        bone_rotations,
+                        bone_angular_velocities);
                     
                     frame_index = best_index;
                 }
@@ -1795,24 +1726,34 @@ int main(void)
         
         // Update inertializer
         
-        inertialize_pose_update(
+        dead_blending_update(
             bone_positions,
             bone_velocities,
             bone_rotations,
             bone_angular_velocities,
-            bone_offset_positions,
-            bone_offset_velocities,
-            bone_offset_rotations,
-            bone_offset_angular_velocities,
+            src_bone_positions,
+            src_bone_velocities,
+            src_bone_rotations,
+            src_bone_angular_velocities,
+            src_blend_time,
             curr_bone_positions,
             curr_bone_velocities,
             curr_bone_rotations,
             curr_bone_angular_velocities,
-            transition_src_position,
-            transition_src_rotation,
-            transition_dst_position,
-            transition_dst_rotation,
-            inertialize_blending_halflife,
+            extrapolation_method,
+            extrapolation_root_halflife,
+            extrapolation_bounce_halflife,
+            extrapolation_halflife,
+            reference_rotations,
+            limit_positions,
+            limit_rotations,
+            kdop_axes,
+            kdop_limit_mins,
+            kdop_limit_maxs,
+            extrapolation_bounce_strength,
+            extrapolator_evaluation,
+            extrapolator,
+            0.2f,
             dt);
         
         // Update Simulation
@@ -1859,16 +1800,17 @@ int main(void)
             simulation_position = synchronized_position;
             simulation_rotation = synchronized_rotation;
             
-            inertialize_root_adjust(
-                bone_offset_positions(0),
-                transition_src_position,
-                transition_src_rotation,
-                transition_dst_position,
-                transition_dst_rotation,
-                bone_positions(0),
-                bone_rotations(0),
-                synchronized_position,
-                synchronized_rotation);
+            dead_blending_root_adjust(
+                src_bone_positions,
+                src_bone_velocities,
+                src_bone_rotations,
+                src_bone_angular_velocities,
+                bone_positions,
+                bone_velocities,
+                bone_rotations,
+                bone_angular_velocities,
+                simulation_position,
+                simulation_rotation);
         }
         
         // Adjustment 
@@ -1911,14 +1853,15 @@ int main(void)
                     dt);
             }
       
-            inertialize_root_adjust(
-                bone_offset_positions(0),
-                transition_src_position,
-                transition_src_rotation,
-                transition_dst_position,
-                transition_dst_rotation,
-                bone_positions(0),
-                bone_rotations(0),
+            dead_blending_root_adjust(
+                src_bone_positions,
+                src_bone_velocities,
+                src_bone_rotations,
+                src_bone_angular_velocities,
+                bone_positions,
+                bone_velocities,
+                bone_rotations,
+                bone_angular_velocities,
                 adjusted_position,
                 adjusted_rotation);
         }
@@ -1940,14 +1883,15 @@ int main(void)
                 simulation_rotation,
                 clamping_max_angle);
             
-            inertialize_root_adjust(
-                bone_offset_positions(0),
-                transition_src_position,
-                transition_src_rotation,
-                transition_dst_position,
-                transition_dst_rotation,
-                bone_positions(0),
-                bone_rotations(0),
+            dead_blending_root_adjust(
+                src_bone_positions,
+                src_bone_velocities,
+                src_bone_rotations,
+                src_bone_angular_velocities,
+                bone_positions,
+                bone_velocities,
+                bone_rotations,
+                bone_angular_velocities,
                 adjusted_position,
                 adjusted_rotation);
         }
@@ -2253,19 +2197,46 @@ int main(void)
         
         //---------
         
-        float ui_inert_hei = 280;
+        float ui_dead_hei = 280;
         
-        GuiGroupBox((Rectangle){ 970, ui_inert_hei, 290, 40 }, "inertiaization blending");
+        GuiGroupBox((Rectangle){ 970, ui_dead_hei, 290, 160 }, "dead blending");
         
-        inertialize_blending_halflife = GuiSliderBar(
-            (Rectangle){ 1100, ui_inert_hei + 10, 120, 20 }, 
-            "halflife", 
-            TextFormat("%5.3f", inertialize_blending_halflife), 
-            inertialize_blending_halflife, 0.0f, 0.3f);
+        dead_blend_time = GuiSliderBar(
+            (Rectangle){ 1100, ui_dead_hei + 10, 120, 20 }, 
+            "blend time", 
+            TextFormat("%5.3f", dead_blend_time), 
+            dead_blend_time, 0.0f, 1.0f);
+        
+        extrapolation_root_halflife = GuiSliderBar(
+            (Rectangle){ 1100, ui_dead_hei + 40, 120, 20 }, 
+            "root decay halflife", 
+            TextFormat("%5.3f", extrapolation_root_halflife), 
+            extrapolation_root_halflife, 0.0, 5.0);
+        
+        extrapolation_halflife = GuiSliderBar(
+            (Rectangle){ 1100, ui_dead_hei + 70, 120, 20 }, 
+            "decay halflife", 
+            TextFormat("%5.3f", extrapolation_halflife), 
+            extrapolation_halflife, 0.0, 1.0);
+        
+        extrapolation_bounce_halflife = GuiSliderBar(
+            (Rectangle){ 1100, ui_dead_hei + 100, 120, 20 }, 
+            "bounce decay halflife", 
+            TextFormat("%5.3f", extrapolation_bounce_halflife), 
+            extrapolation_bounce_halflife, 0.0, 1.0);
+        
+        if (GuiDropdownBox(
+            (Rectangle){ 1100, ui_dead_hei + 130, 120, 20 }, 
+            "None;Linear;Decay;Clamp;Bounce;Extrapolator",
+            &extrapolation_method,
+            extrapolation_method_edit))
+        {
+            extrapolation_method_edit = !extrapolation_method_edit;
+        }
         
         //---------
         
-        float ui_lmm_hei = 330;
+        float ui_lmm_hei = 450;
         
         GuiGroupBox((Rectangle){ 970, ui_lmm_hei, 290, 40 }, "learned motion matching");
         
@@ -2276,7 +2247,7 @@ int main(void)
         
         //---------
         
-        float ui_ctrl_hei = 380;
+        float ui_ctrl_hei = 500;
         
         GuiGroupBox((Rectangle){ 1010, ui_ctrl_hei, 250, 140 }, "controls");
         

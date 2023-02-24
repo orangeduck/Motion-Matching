@@ -22,15 +22,17 @@ ifeq ($(PLATFORM),PLATFORM_WEB)
     CFLAGS ?= $(DEFINES) $(RAYLIB_DIR)/raylib/src/libraylib.bc -ffast-math -D NDEBUG -O3 -s USE_GLFW=3 -s FORCE_FILESYSTEM=1 -s MAX_WEBGL_VERSION=2 -s ALLOW_MEMORY_GROWTH=1 --preload-file $(dir $<)resources@resources --shell-file ./shell.html $(INCLUDE_DIR) $(LIBRARY_DIR)
 endif
 
-SOURCE = $(wildcard *.cpp)
 HEADER = $(wildcard *.h)
 
 .PHONY: all
 
-all: controller
+all: controller extrapolation
 
-controller: $(SOURCE) $(HEADER)
-	$(CC) -o $@$(EXT) $(SOURCE) $(CFLAGS) $(LIBS) 
+controller: controller.cpp $(HEADER)
+	$(CC) -o $@$(EXT) controller.cpp $(CFLAGS) $(LIBS) 
+
+extrapolation: extrapolation.cpp  $(HEADER)
+	$(CC) -o $@$(EXT) extrapolation.cpp $(CFLAGS) $(LIBS) 
 
 clean:
-	rm controller$(EXT)
+	rm controller$(EXT) extrapolation$(EXT)

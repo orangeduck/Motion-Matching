@@ -191,13 +191,8 @@ static inline quat quat_nlerp_shortest(quat q, quat p, float alpha)
     return quat_nlerp(q, p, alpha);
 }
 
-static inline quat quat_slerp_shortest(quat q, quat p, float alpha, float eps=1e-5f)
+static inline quat quat_slerp(quat q, quat p, float alpha, float eps=1e-5f)
 {
-    if (quat_dot(q, p) < 0.0f)
-    {
-        p = -p;
-    }
-    
     float dot = quat_dot(q, p);
 	  float theta = acosf(clampf(dot, -1.0f, 1.0f));
 
@@ -209,6 +204,38 @@ static inline quat quat_slerp_shortest(quat q, quat p, float alpha, float eps=1e
     quat r = quat_normalize(p - q*dot);
 
     return q * cosf(theta * alpha) + r * sinf(theta * alpha);
+}
+
+static inline quat quat_slerp_shortest(quat q, quat p, float alpha, float eps=1e-5f)
+{
+    if (quat_dot(q, p) < 0.0f)
+    {
+        p = -p;
+    }
+    
+    return quat_slerp(q, p, alpha, eps);
+}
+
+static inline quat quat_slerp_via(quat q, quat p, quat& d, float alpha, float eps=1e-5f)
+{   
+    // Find shortest path between the two 
+    // quaternions we want to blend
+    quat e = quat_abs(quat_mul_inv(p, q));
+
+    // Check if shortest path is on the same 
+    // hemisphere as path given by quaternion d
+    if (quat_dot(d, e) < 0.0f)
+    {
+        // If not, we go the other way around to 
+        // match the path described by d
+        e = -e;
+    }
+    
+    // Update d to match our current path
+    d = e;
+    
+    // Rotate along our current shortest path
+    return quat_mul(quat_slerp(quat(), e, alpha, eps), q);
 }
 
 // Taken from https://zeux.io/2015/07/23/approximating-slerp/

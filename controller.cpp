@@ -283,6 +283,7 @@ void blend_pose_and_integrate_root(
     slice1d<vec3> bone_velocities,
     slice1d<quat> bone_rotations,
     slice1d<vec3> bone_angular_velocities,
+    slice1d<quat> bone_slerp_dir,
     const slice1d<vec3> bone_lhs_positions,
     const slice1d<vec3> bone_lhs_velocities,
     const slice1d<quat> bone_lhs_rotations,
@@ -298,7 +299,7 @@ void blend_pose_and_integrate_root(
     {
         bone_positions(i) = lerp(bone_lhs_positions(i), bone_rhs_positions(i), alpha);
         bone_velocities(i) = lerp(bone_lhs_velocities(i), bone_rhs_velocities(i), alpha);
-        bone_rotations(i) = quat_slerp_shortest_approx(bone_lhs_rotations(i), bone_rhs_rotations(i), alpha);
+        bone_rotations(i) = quat_slerp_via(bone_lhs_rotations(i), bone_rhs_rotations(i), bone_slerp_dir(i), alpha);
         bone_angular_velocities(i) = lerp(bone_lhs_angular_velocities(i), bone_rhs_angular_velocities(i), alpha);
     }
     
@@ -352,6 +353,7 @@ void dead_blending_transition(
     slice1d<vec3> bone_src_velocities,
     slice1d<quat> bone_src_rotations,
     slice1d<vec3> bone_src_angular_velocities,
+    slice1d<quat> bone_slerp_dir,
     float& src_blend_time,
     const slice1d<vec3> bone_positions,
     const slice1d<vec3> bone_velocities,
@@ -362,6 +364,7 @@ void dead_blending_transition(
     bone_src_velocities = bone_velocities;
     bone_src_rotations = bone_rotations;
     bone_src_angular_velocities = bone_angular_velocities;
+    bone_slerp_dir.set(quat());
     src_blend_time = 0.0f;
 }
 
@@ -402,6 +405,7 @@ void dead_blending_update(
     slice1d<vec3> bone_velocities,
     slice1d<quat> bone_rotations,
     slice1d<vec3> bone_angular_velocities,
+    slice1d<quat> bone_slerp_dir,
     slice1d<vec3> bone_src_positions,
     slice1d<vec3> bone_src_velocities,
     slice1d<quat> bone_src_rotations,
@@ -457,6 +461,7 @@ void dead_blending_update(
             bone_velocities,
             bone_rotations,
             bone_angular_velocities,
+            bone_slerp_dir,
             bone_src_positions,
             bone_src_velocities,
             bone_src_rotations,
@@ -1260,7 +1265,7 @@ int main(void)
     int frame_index = db.range_starts(0);
     float dead_blend_time = 0.2f;
 
-    int extrapolation_method = 0;
+    int extrapolation_method = 5;
     bool extrapolation_method_edit = false; 
     float extrapolation_root_halflife = 5.0f;
     float extrapolation_halflife = 0.3f;
@@ -1278,6 +1283,9 @@ int main(void)
     array1d<quat> src_bone_rotations = db.bone_rotations(frame_index);
     array1d<vec3> src_bone_angular_velocities = db.bone_angular_velocities(frame_index);
     float src_blend_time = FLT_MAX;
+    
+    array1d<quat> bone_slerp_dir(db.nbones());
+    bone_slerp_dir.set(quat());
     
     array1d<vec3> bone_positions = db.bone_positions(frame_index);
     array1d<vec3> bone_velocities = db.bone_velocities(frame_index);
@@ -1359,7 +1367,7 @@ int main(void)
     
     // IK
     
-    bool ik_enabled = true;
+    bool ik_enabled = false;
     float ik_max_length_buffer = 0.015f;
     float ik_foot_height = 0.02f;
     float ik_toe_length = 0.15f;
@@ -1636,6 +1644,7 @@ int main(void)
                         src_bone_velocities,
                         src_bone_rotations,
                         src_bone_angular_velocities,
+                        bone_slerp_dir,
                         src_blend_time,
                         bone_positions,
                         bone_velocities,
@@ -1669,6 +1678,7 @@ int main(void)
                         src_bone_velocities,
                         src_bone_rotations,
                         src_bone_angular_velocities,
+                        bone_slerp_dir,
                         src_blend_time,
                         bone_positions,
                         bone_velocities,
@@ -1731,6 +1741,7 @@ int main(void)
             bone_velocities,
             bone_rotations,
             bone_angular_velocities,
+            bone_slerp_dir,
             src_bone_positions,
             src_bone_velocities,
             src_bone_rotations,

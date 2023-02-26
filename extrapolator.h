@@ -19,7 +19,9 @@ void extrapolate_linear(
     for (int i = 0; i < bone_positions.size; i++)
     {
         bone_positions(i) = bone_positions(i) + dt * bone_velocities(i);
-        bone_rotations(i) = quat_mul(quat_from_scaled_angle_axis(dt * bone_angular_velocities(i)), bone_rotations(i));
+        bone_rotations(i) = quat_mul(
+            quat_from_scaled_angle_axis(dt * bone_angular_velocities(i)), 
+            bone_rotations(i));
     }
 }
 

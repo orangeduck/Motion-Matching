@@ -23,6 +23,7 @@ extern "C"
 #include <initializer_list>
 #include <functional>
 
+/*
 #include <profileapi.h>
 
 #define PROFILE_INIT() \
@@ -37,6 +38,7 @@ extern "C"
     LARGE_INTEGER ____prof_li_end_##TIMER; \
     QueryPerformanceCounter(&____prof_li_end_##TIMER); \
     printf("%s: %5.1fus\n", #TIMER, (double)((____prof_li_end_##TIMER.QuadPart - ____prof_li_start_##TIMER.QuadPart) * 1000000) / (double)____prof_freq.QuadPart);
+*/
 
 //--------------------------------------
 
@@ -225,13 +227,13 @@ void update_callback(void* args)
 
 int main(void)
 {
-    PROFILE_INIT();
+    //PROFILE_INIT();
   
     // Init Window
     
     const int screen_width = 1280;
     const int screen_height = 720;
-    
+
     SetConfigFlags(FLAG_VSYNC_HINT);
     SetConfigFlags(FLAG_MSAA_4X_HINT);
     InitWindow(screen_width, screen_height, "raylib [extrapolation]");
@@ -365,7 +367,7 @@ int main(void)
         }
         else
         {
-            PROFILE_BEGIN(extrapolation);
+            //PROFILE_BEGIN(extrapolation);
           
             extrapolate(
                 pred_bone_positions,
@@ -387,7 +389,7 @@ int main(void)
                 extrapolator,
                 dt);
           
-            PROFILE_END(extrapolation);
+            //PROFILE_END(extrapolation);
         }
         
         forward_kinematics_full(

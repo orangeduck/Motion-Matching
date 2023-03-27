@@ -505,10 +505,10 @@ void database_build_bounds(database& db)
     db.bound_lr_min.resize(nbound_lr, db.nfeatures()); 
     db.bound_lr_max.resize(nbound_lr, db.nfeatures()); 
     
-    db.bound_sm_min.set(FLT_MAX);
-    db.bound_sm_max.set(FLT_MIN);
-    db.bound_lr_min.set(FLT_MAX);
-    db.bound_lr_max.set(FLT_MIN);
+    db.bound_sm_min.set(+FLT_MAX);
+    db.bound_sm_max.set(-FLT_MAX);
+    db.bound_lr_min.set(+FLT_MAX);
+    db.bound_lr_max.set(-FLT_MAX);
     
     for (int i = 0; i < db.nframes(); i++)
     {

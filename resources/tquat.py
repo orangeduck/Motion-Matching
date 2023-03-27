@@ -191,7 +191,7 @@ def fk_vel(lrot, lpos, lvel, lang, parents):
         gp.append(mul_vec(gr[parents[i]], lpos[...,i:i+1,:]) + gp[parents[i]])
         gr.append(mul    (gr[parents[i]], lrot[...,i:i+1,:]))
         gv.append(mul_vec(gr[parents[i]], lvel[...,i:i+1,:]) + 
-            torch.cross(ga[parents[i]], mul_vec(gr[parents[i]], lpos[...,i:i+1,:]), dim=-1) +
+            _fast_cross(ga[parents[i]], mul_vec(gr[parents[i]], lpos[...,i:i+1,:])) +
             gv[parents[i]])
         ga.append(mul_vec(gr[parents[i]], lang[...,i:i+1,:]) + ga[parents[i]])
         

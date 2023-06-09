@@ -210,7 +210,7 @@ static inline void inertialize_update(
 {
     decay_spring_damper_exact(off_x, off_v, halflife, dt);
     out_x = quat_mul(off_x, in_x);
-    out_v = off_v + in_v;
+    out_v = off_v + quat_mul_vec3(off_x, in_v);
 }
 
 //--------------------------------------
@@ -328,7 +328,7 @@ static inline void inertialize_cubic_update(
     decayed_offset_cubic(dec_x, dec_v, off_x, off_v, blendtime, off_t);
     
     out_x = quat_mul(dec_x, in_x);
-    out_v = dec_v + in_v;
+    out_v = dec_v + quat_mul_vec3(dec_x, in_v);
 }
 
 

@@ -183,8 +183,6 @@ void orbit_camera_update(
 
     cam.target = (Vector3){ target.x, target.y, target.z };
     cam.position = (Vector3){ eye.x, eye.y, eye.z };
-    
-    UpdateCamera(&cam);
 }
 
 //--------------------------------------
@@ -2203,53 +2201,53 @@ int main(void)
         
         GuiGroupBox((Rectangle){ 970, ui_sim_hei, 290, 250 }, "simulation object");
 
-        simulation_velocity_halflife = GuiSliderBar(
+        GuiSliderBar(
             (Rectangle){ 1100, ui_sim_hei + 10, 120, 20 }, 
             "velocity halflife", 
             TextFormat("%5.3f", simulation_velocity_halflife), 
-            simulation_velocity_halflife, 0.0f, 0.5f);
+            &simulation_velocity_halflife, 0.0f, 0.5f);
             
-        simulation_rotation_halflife = GuiSliderBar(
+        GuiSliderBar(
             (Rectangle){ 1100, ui_sim_hei + 40, 120, 20 }, 
             "rotation halflife", 
             TextFormat("%5.3f", simulation_rotation_halflife), 
-            simulation_rotation_halflife, 0.0f, 0.5f);
+            &simulation_rotation_halflife, 0.0f, 0.5f);
             
-        simulation_run_fwrd_speed = GuiSliderBar(
+        GuiSliderBar(
             (Rectangle){ 1100, ui_sim_hei + 70, 120, 20 }, 
             "run forward speed", 
             TextFormat("%5.3f", simulation_run_fwrd_speed), 
-            simulation_run_fwrd_speed, 0.0f, 10.0f);
+            &simulation_run_fwrd_speed, 0.0f, 10.0f);
         
-        simulation_run_side_speed = GuiSliderBar(
+        GuiSliderBar(
             (Rectangle){ 1100, ui_sim_hei + 100, 120, 20 }, 
             "run sideways speed", 
             TextFormat("%5.3f", simulation_run_side_speed), 
-            simulation_run_side_speed, 0.0f, 10.0f);
+            &simulation_run_side_speed, 0.0f, 10.0f);
         
-        simulation_run_back_speed = GuiSliderBar(
+        GuiSliderBar(
             (Rectangle){ 1100, ui_sim_hei + 130, 120, 20 }, 
             "run backwards speed", 
             TextFormat("%5.3f", simulation_run_back_speed), 
-            simulation_run_back_speed, 0.0f, 10.0f);
+            &simulation_run_back_speed, 0.0f, 10.0f);
         
-        simulation_walk_fwrd_speed = GuiSliderBar(
+        GuiSliderBar(
             (Rectangle){ 1100, ui_sim_hei + 160, 120, 20 }, 
             "walk forward speed", 
             TextFormat("%5.3f", simulation_walk_fwrd_speed), 
-            simulation_walk_fwrd_speed, 0.0f, 5.0f);
+            &simulation_walk_fwrd_speed, 0.0f, 5.0f);
         
-        simulation_walk_side_speed = GuiSliderBar(
+        GuiSliderBar(
             (Rectangle){ 1100, ui_sim_hei + 190, 120, 20 }, 
             "walk sideways speed", 
             TextFormat("%5.3f", simulation_walk_side_speed), 
-            simulation_walk_side_speed, 0.0f, 5.0f);
+            &simulation_walk_side_speed, 0.0f, 5.0f);
         
-        simulation_walk_back_speed = GuiSliderBar(
+        GuiSliderBar(
             (Rectangle){ 1100, ui_sim_hei + 220, 120, 20 }, 
             "walk backwards speed", 
             TextFormat("%5.3f", simulation_walk_back_speed), 
-            simulation_walk_back_speed, 0.0f, 5.0f);
+            &simulation_walk_back_speed, 0.0f, 5.0f);
         
         //---------
         
@@ -2257,11 +2255,11 @@ int main(void)
         
         GuiGroupBox((Rectangle){ 970, ui_inert_hei, 290, 40 }, "inertiaization blending");
         
-        inertialize_blending_halflife = GuiSliderBar(
+        GuiSliderBar(
             (Rectangle){ 1100, ui_inert_hei + 10, 120, 20 }, 
             "halflife", 
             TextFormat("%5.3f", inertialize_blending_halflife), 
-            inertialize_blending_halflife, 0.0f, 0.3f);
+            &inertialize_blending_halflife, 0.0f, 0.3f);
         
         //---------
         
@@ -2269,10 +2267,10 @@ int main(void)
         
         GuiGroupBox((Rectangle){ 970, ui_lmm_hei, 290, 40 }, "learned motion matching");
         
-        lmm_enabled = GuiCheckBox(
+        GuiCheckBox(
             (Rectangle){ 1000, ui_lmm_hei + 10, 20, 20 }, 
             "enabled",
-            lmm_enabled);
+            &lmm_enabled);
         
         //---------
         
@@ -2293,35 +2291,35 @@ int main(void)
         
         GuiGroupBox((Rectangle){ 20, 20, 290, 190 }, "feature weights");
         
-        feature_weight_foot_position = GuiSliderBar(
+        GuiSliderBar(
             (Rectangle){ 150, 30, 120, 20 }, 
             "foot position", 
             TextFormat("%5.3f", feature_weight_foot_position), 
-            feature_weight_foot_position, 0.001f, 3.0f);
+            &feature_weight_foot_position, 0.001f, 3.0f);
             
-        feature_weight_foot_velocity = GuiSliderBar(
+        GuiSliderBar(
             (Rectangle){ 150, 60, 120, 20 }, 
             "foot velocity", 
             TextFormat("%5.3f", feature_weight_foot_velocity), 
-            feature_weight_foot_velocity, 0.001f, 3.0f);
+            &feature_weight_foot_velocity, 0.001f, 3.0f);
         
-        feature_weight_hip_velocity = GuiSliderBar(
+        GuiSliderBar(
             (Rectangle){ 150, 90, 120, 20 }, 
             "hip velocity", 
             TextFormat("%5.3f", feature_weight_hip_velocity), 
-            feature_weight_hip_velocity, 0.001f, 3.0f);
+            &feature_weight_hip_velocity, 0.001f, 3.0f);
         
-        feature_weight_trajectory_positions = GuiSliderBar(
+        GuiSliderBar(
             (Rectangle){ 150, 120, 120, 20 }, 
             "trajectory positions", 
             TextFormat("%5.3f", feature_weight_trajectory_positions), 
-            feature_weight_trajectory_positions, 0.001f, 3.0f);
+            &feature_weight_trajectory_positions, 0.001f, 3.0f);
         
-        feature_weight_trajectory_directions = GuiSliderBar(
+        GuiSliderBar(
             (Rectangle){ 150, 150, 120, 20 }, 
             "trajectory directions", 
             TextFormat("%5.3f", feature_weight_trajectory_directions), 
-            feature_weight_trajectory_directions, 0.001f, 3.0f);
+            &feature_weight_trajectory_directions, 0.001f, 3.0f);
             
         if (GuiButton((Rectangle){ 150, 180, 120, 20 }, "rebuild database"))
         {
@@ -2340,16 +2338,16 @@ int main(void)
         
         GuiGroupBox((Rectangle){ 20, ui_sync_hei, 290, 70 }, "synchronization");
 
-        synchronization_enabled = GuiCheckBox(
+        GuiCheckBox(
             (Rectangle){ 50, ui_sync_hei + 10, 20, 20 }, 
             "enabled",
-            synchronization_enabled);
+            &synchronization_enabled);
 
-        synchronization_data_factor = GuiSliderBar(
+        GuiSliderBar(
             (Rectangle){ 150, ui_sync_hei + 40, 120, 20 }, 
             "data-driven amount", 
             TextFormat("%5.3f", synchronization_data_factor), 
-            synchronization_data_factor, 0.0f, 1.0f);
+            &synchronization_data_factor, 0.0f, 1.0f);
 
         //---------
         
@@ -2357,27 +2355,27 @@ int main(void)
         
         GuiGroupBox((Rectangle){ 20, ui_adj_hei, 290, 130 }, "adjustment");
         
-        adjustment_enabled = GuiCheckBox(
+        GuiCheckBox(
             (Rectangle){ 50, ui_adj_hei + 10, 20, 20 }, 
             "enabled",
-            adjustment_enabled);    
+            &adjustment_enabled);    
         
-        adjustment_by_velocity_enabled = GuiCheckBox(
+        GuiCheckBox(
             (Rectangle){ 50, ui_adj_hei + 40, 20, 20 }, 
             "clamp to max velocity",
-            adjustment_by_velocity_enabled);    
+            &adjustment_by_velocity_enabled);    
         
-        adjustment_position_halflife = GuiSliderBar(
+        GuiSliderBar(
             (Rectangle){ 150, ui_adj_hei + 70, 120, 20 }, 
             "position halflife", 
             TextFormat("%5.3f", adjustment_position_halflife), 
-            adjustment_position_halflife, 0.0f, 0.5f);
+            &adjustment_position_halflife, 0.0f, 0.5f);
         
-        adjustment_rotation_halflife = GuiSliderBar(
+        GuiSliderBar(
             (Rectangle){ 150, ui_adj_hei + 100, 120, 20 }, 
             "rotation halflife", 
             TextFormat("%5.3f", adjustment_rotation_halflife), 
-            adjustment_rotation_halflife, 0.0f, 0.5f);
+            &adjustment_rotation_halflife, 0.0f, 0.5f);
         
         //---------
         
@@ -2385,22 +2383,22 @@ int main(void)
         
         GuiGroupBox((Rectangle){ 20, ui_clamp_hei, 290, 100 }, "clamping");
         
-        clamping_enabled = GuiCheckBox(
+        GuiCheckBox(
             (Rectangle){ 50, ui_clamp_hei + 10, 20, 20 }, 
             "enabled",
-            clamping_enabled);      
+            &clamping_enabled);      
         
-        clamping_max_distance = GuiSliderBar(
+        GuiSliderBar(
             (Rectangle){ 150, ui_clamp_hei + 40, 120, 20 }, 
             "distance", 
             TextFormat("%5.3f", clamping_max_distance), 
-            clamping_max_distance, 0.0f, 0.5f);
+            &clamping_max_distance, 0.0f, 0.5f);
         
-        clamping_max_angle = GuiSliderBar(
+        GuiSliderBar(
             (Rectangle){ 150, ui_clamp_hei + 70, 120, 20 }, 
             "angle", 
             TextFormat("%5.3f", clamping_max_angle), 
-            clamping_max_angle, 0.0f, PIf);
+            &clamping_max_angle, 0.0f, PIf);
         
         //---------
         
@@ -2410,10 +2408,10 @@ int main(void)
         
         bool ik_enabled_prev = ik_enabled;
         
-        ik_enabled = GuiCheckBox(
+        GuiCheckBox(
             (Rectangle){ 50, ui_ik_hei + 10, 20, 20 }, 
             "enabled",
-            ik_enabled);      
+            &ik_enabled);      
         
         // Foot locking needs resetting when IK is toggled
         if (ik_enabled && !ik_enabled_prev)
@@ -2452,17 +2450,17 @@ int main(void)
             }
         }
         
-        ik_blending_halflife = GuiSliderBar(
+        GuiSliderBar(
             (Rectangle){ 150, ui_ik_hei + 40, 120, 20 }, 
             "blending halflife", 
             TextFormat("%5.3f", ik_blending_halflife), 
-            ik_blending_halflife, 0.0f, 1.0f);
+            &ik_blending_halflife, 0.0f, 1.0f);
         
-        ik_unlock_radius = GuiSliderBar(
+        GuiSliderBar(
             (Rectangle){ 150, ui_ik_hei + 70, 120, 20 }, 
             "unlock radius", 
             TextFormat("%5.3f", ik_unlock_radius), 
-            ik_unlock_radius, 0.0f, 0.5f);
+            &ik_unlock_radius, 0.0f, 0.5f);
         
         //---------
 

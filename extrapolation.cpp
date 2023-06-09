@@ -201,8 +201,6 @@ void orbit_camera_update(
 
     cam.target = (Vector3){ target.x, target.y, target.z };
     cam.position = (Vector3){ eye.x, eye.y, eye.z };
-    
-    UpdateCamera(&cam);
 }
 
 //--------------------------------------
@@ -458,29 +456,33 @@ int main(void)
         
         GuiGroupBox((Rectangle){ 970, ui_hei, 290, 160 }, "extrapolation");
 
-        extrapolation_duration = (int)GuiSliderBar(
+        float float_extrapolation_duration = extrapolation_duration;
+
+        GuiSliderBar(
             (Rectangle){ 1100, ui_hei + 10, 120, 20 }, 
             "duration", 
             TextFormat("%i", extrapolation_duration), 
-            extrapolation_duration, 0, 120);
+            &float_extrapolation_duration, 0, 120);
         
-        extrapolation_root_halflife = GuiSliderBar(
+        extrapolation_duration = (int)float_extrapolation_duration;
+        
+        GuiSliderBar(
             (Rectangle){ 1100, ui_hei + 40, 120, 20 }, 
             "root decay halflife", 
             TextFormat("%5.3f", extrapolation_root_halflife), 
-            extrapolation_root_halflife, 0.0, 5.0);
+            &extrapolation_root_halflife, 0.0, 5.0);
         
-        extrapolation_halflife = GuiSliderBar(
+        GuiSliderBar(
             (Rectangle){ 1100, ui_hei + 70, 120, 20 }, 
             "decay halflife", 
             TextFormat("%5.3f", extrapolation_halflife), 
-            extrapolation_halflife, 0.0, 1.0);
+            &extrapolation_halflife, 0.0, 1.0);
         
-        extrapolation_bounce_halflife = GuiSliderBar(
+        GuiSliderBar(
             (Rectangle){ 1100, ui_hei + 100, 120, 20 }, 
             "bounce decay halflife", 
             TextFormat("%5.3f", extrapolation_bounce_halflife), 
-            extrapolation_bounce_halflife, 0.0, 1.0);
+            &extrapolation_bounce_halflife, 0.0, 1.0);
         
         if (GuiDropdownBox(
             (Rectangle){ 1100, ui_hei + 130, 120, 20 }, 

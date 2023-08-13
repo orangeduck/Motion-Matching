@@ -27,7 +27,7 @@ static inline vec2 operator+(vec2 v, vec2 w)
 
 static inline vec2 operator-(float s, vec2 v)
 {
-    return vec2(v.x - s, v.y - s);
+    return vec2(s - v.x, s - v.y);
 }
 
 static inline vec2 operator-(vec2 v, float s)
@@ -138,7 +138,7 @@ static inline vec3 operator+(vec3 v, vec3 w)
 
 static inline vec3 operator-(float s, vec3 v)
 {
-    return vec3(v.x - s, v.y - s, v.z - s);
+    return vec3(s - v.x, s - v.y, s - v.z);
 }
 
 static inline vec3 operator-(vec3 v, float s)
@@ -220,4 +220,17 @@ static inline vec3 clamp(vec3 v, vec3 min, vec3 max)
         clampf(v.x, min.x, max.x),
         clampf(v.y, min.y, max.y),
         clampf(v.z, min.z, max.z));
+}
+
+static inline vec3 clamp(vec3 v, float min, float max)
+{
+    return vec3(
+        clampf(v.x, min, max),
+        clampf(v.y, min, max),
+        clampf(v.z, min, max));
+}
+
+static inline vec3 fast_negexp(vec3 x)
+{
+    return 1.0f / (1.0f + x + 0.48f*x*x + 0.235f*x*x*x);
 }

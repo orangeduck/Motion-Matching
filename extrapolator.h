@@ -47,6 +47,138 @@ void extrapolate_decay(
     }
 }
 
+float max_mag(float x, float eps)
+{
+    return
+        x >= 0.0f && x <  eps ?  eps :
+        x <  0.0f && x > -eps ? -eps : x;
+}
+
+vec3 max_mag(vec3 x, float eps)
+{
+    return vec3(
+        max_mag(x.x, eps),
+        max_mag(x.y, eps),
+        max_mag(x.z, eps));
+}
+
+vec3 estimate_halflife(
+    vec3 src_dst_diff,
+    vec3 src_vel,
+    float halflife_scale = 0.3f,
+    float halflife_min = 0.1f,
+    float halflife_max = 1.0f,
+    float eps = 1e-8f)
+{
+    return clamp(
+        halflife_scale * (src_dst_diff / max_mag(src_vel, eps)), 
+        halflife_min, 
+        halflife_max);
+}
+
+void reset_halflives(
+    slice1d<vec3> bone_position_halflives,
+    slice1d<vec3> bone_rotation_halflives,
+    const float min_halflife,
+    const float root_halflife)
+{
+    bone_position_halflives(0) = vec3(root_halflife, root_halflife, root_halflife);
+    bone_rotation_halflives(0) = vec3(root_halflife, root_halflife, root_halflife);
+
+    for (int i = 1; i < bone_position_halflives.size; i++)
+    {
+        bone_position_halflives(i) = vec3(min_halflife, min_halflife, min_halflife);
+        bone_rotation_halflives(i) = vec3(min_halflife, min_halflife, min_halflife);
+    }
+}
+
+void fit_halflives(
+    slice1d<vec3> bone_position_halflives,
+    slice1d<vec3> bone_rotation_halflives,
+    const slice1d<vec3> src_positions,
+    const slice1d<vec3> src_velocities,
+    const slice1d<quat> src_rotations,
+    const slice1d<vec3> src_angular_velocities,
+    const slice1d<vec3> dst_positions,
+    const slice1d<quat> dst_rotations,
+    const float halflife,
+    const float min_halflife,
+    const float max_halflife,
+    const float root_halflife)
+{
+    bone_position_halflives(0) = vec3(root_halflife, root_halflife, root_halflife);
+    bone_rotation_halflives(0) = vec3(root_halflife, root_halflife, root_halflife);
+
+    for (int i = 1; i < bone_position_halflives.size; i++)
+    {
+        vec3 src_to_dst_pos = dst_positions(i) - src_positions(i);
+        quat src_to_dst_rot = quat_abs(quat_mul_inv(dst_rotations(i), src_rotations(i)));
+        
+        bone_position_halflives(i) = estimate_halflife(
+            src_to_dst_pos,
+            src_velocities(i),
+            halflife,
+            min_halflife,
+            max_halflife);
+            
+        bone_rotation_halflives(i) = estimate_halflife(
+            quat_to_scaled_angle_axis(src_to_dst_rot),
+            src_angular_velocities(i),
+            halflife,
+            min_halflife,
+            max_halflife);
+    }
+}
+
+static inline void extrapolate_decay_position(
+    vec3& x,
+    vec3& v,
+    vec3 halflife,
+    float dt,
+    float eps = 1e-8f)
+{
+    vec3 y = LN2f / (halflife + eps);
+    x = x + (v / (y + eps)) * (1.0f - fast_negexp(y * dt));
+    v = v * fast_negexp(y * dt);
+}
+
+void extrapolate_decay_rotation(
+    quat& x,
+    vec3& v,
+    vec3 halflife,
+    float dt,
+    float eps = 1e-8f)
+{
+    vec3 y = LN2f / (halflife + eps);
+    x = quat_mul(quat_from_scaled_angle_axis((v / (y + eps)) * (1.0f - fast_negexp(y * dt))), x);
+    v = v * fast_negexp(y * dt);
+}
+
+void extrapolate_halflives(
+    slice1d<vec3> bone_positions,
+    slice1d<vec3> bone_velocities,
+    slice1d<quat> bone_rotations,
+    slice1d<vec3> bone_angular_velocities,
+    const slice1d<vec3> bone_position_halflives,
+    const slice1d<vec3> bone_rotation_halflives,
+    const float dt = 1.0f / 60.0f)
+{
+    for (int i = 0; i < bone_positions.size; i++)
+    {
+        extrapolate_decay_position(
+            bone_positions(i),
+            bone_velocities(i),
+            bone_position_halflives(i),
+            dt);
+      
+        extrapolate_decay_rotation(
+            bone_rotations(i),
+            bone_angular_velocities(i),
+            bone_rotation_halflives(i),
+            dt);
+    }
+}
+
 static inline vec3 apply_kdop_limit(
     const vec3 limit_space_rotation,
     const slice1d<float> limit_mins,
@@ -305,6 +437,8 @@ void extrapolate(
     const slice2d<float> kdop_limit_mins,
     const slice2d<float> kdop_limit_maxs,
     const float bounce_strength,
+    const slice1d<vec3> bone_position_halflives,
+    const slice1d<vec3> bone_rotation_halflives,
     nnet_evaluation& evaluation,
     const nnet& nn,
     const float dt = 1.0f / 60.0f,
@@ -370,6 +504,17 @@ void extrapolate(
             dt);
     }
     else if (extrapolation_method == 5)
+    {
+        extrapolate_halflives(
+            bone_positions,
+            bone_velocities,
+            bone_rotations,
+            bone_angular_velocities,
+            bone_position_halflives,
+            bone_rotation_halflives,
+            dt);
+    }
+    else if (extrapolation_method == 6)
     {
         extrapolator_evaluate(
             bone_positions,

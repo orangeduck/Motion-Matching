@@ -347,17 +347,43 @@ void dead_blending_reset(float& src_blend_time)
 }
 
 void dead_blending_transition(
+    slice1d<vec3> bone_position_halflives,
+    slice1d<vec3> bone_rotation_halflives,
     slice1d<vec3> bone_src_positions,
     slice1d<vec3> bone_src_velocities,
     slice1d<quat> bone_src_rotations,
     slice1d<vec3> bone_src_angular_velocities,
     slice1d<quat> bone_slerp_dir,
     float& src_blend_time,
+    int extrapolation_method,
     const slice1d<vec3> bone_positions,
     const slice1d<vec3> bone_velocities,
     const slice1d<quat> bone_rotations,
-    const slice1d<vec3> bone_angular_velocities)
+    const slice1d<vec3> bone_angular_velocities,
+    const slice1d<vec3> bone_dst_positions,
+    const slice1d<quat> bone_dst_rotations,
+    const float extrapolation_halflife,
+    const float extrapolation_min_halflife,
+    const float extrapolation_max_halflife,
+    const float extrapolation_root_halflife)
 {
+    if (extrapolation_method == 5)
+    {
+        fit_halflives(
+            bone_position_halflives,
+            bone_rotation_halflives,
+            bone_positions,
+            bone_velocities,
+            bone_rotations,
+            bone_angular_velocities,
+            bone_dst_positions,
+            bone_dst_rotations,
+            extrapolation_halflife,
+            extrapolation_min_halflife,
+            extrapolation_max_halflife,
+            extrapolation_root_halflife);
+    }
+  
     bone_src_positions = bone_positions;
     bone_src_velocities = bone_velocities;
     bone_src_rotations = bone_rotations;
@@ -424,6 +450,8 @@ void dead_blending_update(
     const slice2d<float> kdop_limit_mins,
     const slice2d<float> kdop_limit_maxs,
     const float bounce_strength,
+    const slice1d<vec3> bone_position_halflives,
+    const slice1d<vec3> bone_rotation_halflives,
     nnet_evaluation& evaluation,
     const nnet& nn,
     const float blend_duration,
@@ -448,12 +476,14 @@ void dead_blending_update(
               kdop_limit_mins,
               kdop_limit_maxs,
               bounce_strength,
+              bone_position_halflives,
+              bone_rotation_halflives,
               evaluation,
               nn,
               dt);
       
         float alpha = smoothstep(src_blend_time / maxf(blend_duration, eps));
-
+        
         blend_pose_and_integrate_root(
             bone_positions,
             bone_velocities,
@@ -1263,10 +1293,12 @@ int main(void)
     int frame_index = db.range_starts(0);
     float dead_blend_time = 0.2f;
 
-    int extrapolation_method = 5;
+    int extrapolation_method = 6;
     bool extrapolation_method_edit = false; 
     float extrapolation_root_halflife = 5.0f;
     float extrapolation_halflife = 0.3f;
+    float extrapolation_min_halflife = 0.1f;
+    float extrapolation_max_halflife = 1.0f;
     float extrapolation_bounce_halflife = 0.5f;    
     float extrapolation_bounce_strength = 10.0f;
 
@@ -1285,6 +1317,12 @@ int main(void)
     array1d<quat> bone_slerp_dir(db.nbones());
     bone_slerp_dir.set(quat());
     
+    array1d<vec3> dst_bone_positions = db.bone_positions(frame_index);
+    array1d<vec3> dst_bone_velocities = db.bone_velocities(frame_index);
+    array1d<quat> dst_bone_rotations = db.bone_rotations(frame_index);    
+    array1d<vec3> dst_bone_angular_velocities = db.bone_angular_velocities(frame_index);
+    array1d<bool> dst_bone_contacts = db.contact_states(frame_index);
+
     array1d<vec3> bone_positions = db.bone_positions(frame_index);
     array1d<vec3> bone_velocities = db.bone_velocities(frame_index);
     array1d<quat> bone_rotations = db.bone_rotations(frame_index);
@@ -1295,6 +1333,15 @@ int main(void)
     array1d<quat> global_bone_rotations(db.nbones());
     array1d<vec3> global_bone_angular_velocities(db.nbones());
     array1d<bool> global_bone_computed(db.nbones());
+    
+    array1d<vec3> bone_position_halflives(db.nbones());
+    array1d<vec3> bone_rotation_halflives(db.nbones());
+    
+    reset_halflives(
+        bone_position_halflives,
+        bone_rotation_halflives,
+        extrapolation_root_halflife,
+        extrapolation_min_halflife);
     
     dead_blending_reset(src_blend_time);
 
@@ -1636,22 +1683,45 @@ int main(void)
                 
                 // If projection is sufficiently different from current
                 if (transition)
-                {   
+                {
+                    // Update current features and latents
+                    features_curr = features_proj;
+                    latent_curr = latent_proj;
+                  
+                    decompressor_evaluate(
+                        dst_bone_positions,
+                        dst_bone_velocities,
+                        dst_bone_rotations,
+                        dst_bone_angular_velocities,
+                        dst_bone_contacts,
+                        decompressor_evaluation,
+                        features_curr,
+                        latent_curr,
+                        curr_bone_positions(0),
+                        curr_bone_rotations(0),
+                        decompressor,
+                        dt);
+                  
                     dead_blending_transition(
+                        bone_position_halflives,
+                        bone_rotation_halflives,
                         src_bone_positions,
                         src_bone_velocities,
                         src_bone_rotations,
                         src_bone_angular_velocities,
                         bone_slerp_dir,
                         src_blend_time,
+                        extrapolation_method,
                         bone_positions,
                         bone_velocities,
                         bone_rotations,
-                        bone_angular_velocities);
-                    
-                    // Update current features and latents
-                    features_curr = features_proj;
-                    latent_curr = latent_proj;
+                        bone_angular_velocities,
+                        dst_bone_positions,
+                        dst_bone_rotations,
+                        extrapolation_halflife,
+                        extrapolation_min_halflife,
+                        extrapolation_max_halflife,
+                        extrapolation_root_halflife);
                 }
             }
             else
@@ -1671,19 +1741,31 @@ int main(void)
                 
                 if (best_index != frame_index)
                 {
+                    frame_index = best_index;
+
+                    dst_bone_positions = db.bone_positions(frame_index);
+                    dst_bone_rotations = db.bone_rotations(frame_index);                    
+                    
                     dead_blending_transition(
+                        bone_position_halflives,
+                        bone_rotation_halflives,
                         src_bone_positions,
                         src_bone_velocities,
                         src_bone_rotations,
                         src_bone_angular_velocities,
                         bone_slerp_dir,
                         src_blend_time,
+                        extrapolation_method,
                         bone_positions,
                         bone_velocities,
                         bone_rotations,
-                        bone_angular_velocities);
-                    
-                    frame_index = best_index;
+                        bone_angular_velocities,
+                        dst_bone_positions,
+                        dst_bone_rotations,
+                        extrapolation_halflife,
+                        extrapolation_min_halflife,
+                        extrapolation_max_halflife,
+                        extrapolation_root_halflife);                    
                 }
             }
 
@@ -1760,6 +1842,8 @@ int main(void)
             kdop_limit_mins,
             kdop_limit_maxs,
             extrapolation_bounce_strength,
+            bone_position_halflives,
+            bone_rotation_halflives,
             extrapolator_evaluation,
             extrapolator,
             0.2f,
@@ -2236,7 +2320,7 @@ int main(void)
         
         if (GuiDropdownBox(
             (Rectangle){ 1100, ui_dead_hei + 130, 120, 20 }, 
-            "None;Linear;Decay;Clamp;Bounce;Extrapolator",
+            "None;Linear;Decay;Clamp;Bounce;Heuristic;Extrapolator",
             &extrapolation_method,
             extrapolation_method_edit))
         {

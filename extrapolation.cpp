@@ -287,8 +287,16 @@ int main(void)
     bool extrapolation_method_edit = false; 
     float extrapolation_root_halflife = 5.0f;
     float extrapolation_halflife = 0.3f;
+    float extrapolation_min_halflife = 0.1f;
+    float extrapolation_max_halflife = 1.0f;
     float extrapolation_bounce_halflife = 0.5f;    
     float extrapolation_bounce_strength = 10.0f;
+    
+
+    array1d<vec3> prev_bone_positions = db.bone_positions(frame_index);
+    array1d<vec3> prev_bone_velocities = db.bone_velocities(frame_index);
+    array1d<quat> prev_bone_rotations = db.bone_rotations(frame_index);
+    array1d<vec3> prev_bone_angular_velocities = db.bone_angular_velocities(frame_index);
 
     array1d<vec3> curr_bone_positions = db.bone_positions(frame_index);
     array1d<vec3> curr_bone_velocities = db.bone_velocities(frame_index);
@@ -307,6 +315,15 @@ int main(void)
     array1d<vec3> pred_global_bone_positions(db.nbones());
     array1d<quat> pred_global_bone_rotations(db.nbones());
     array1d<bool> pred_global_bone_computed(db.nbones());
+    
+    array1d<vec3> bone_position_halflives(db.nbones());
+    array1d<vec3> bone_rotation_halflives(db.nbones());
+    
+    reset_halflives(
+        bone_position_halflives,
+        bone_rotation_halflives,
+        extrapolation_root_halflife,
+        extrapolation_min_halflife);
     
     // Joint Limits
     
@@ -350,6 +367,12 @@ int main(void)
         // Tick frame
         frame_index++; // Assumes dt is fixed to 60fps
         
+        // Store old Pose
+        prev_bone_positions = curr_bone_positions;
+        prev_bone_velocities = curr_bone_velocities;
+        prev_bone_rotations = curr_bone_rotations;
+        prev_bone_angular_velocities = curr_bone_angular_velocities;
+        
         // Look-up Next Pose
         curr_bone_positions = db.bone_positions(frame_index);
         curr_bone_velocities = db.bone_velocities(frame_index);
@@ -362,6 +385,23 @@ int main(void)
             pred_bone_velocities = curr_bone_velocities;
             pred_bone_rotations = curr_bone_rotations;
             pred_bone_angular_velocities = curr_bone_angular_velocities;
+            
+            if (extrapolation_method == 5)
+            {
+                fit_halflives(
+                    bone_position_halflives,
+                    bone_rotation_halflives,
+                    prev_bone_positions,
+                    prev_bone_velocities,
+                    prev_bone_rotations,
+                    prev_bone_angular_velocities,
+                    curr_bone_positions,
+                    curr_bone_rotations,
+                    extrapolation_halflife,
+                    extrapolation_min_halflife,
+                    extrapolation_max_halflife,
+                    extrapolation_root_halflife);
+            }
         }
         else
         {
@@ -383,6 +423,8 @@ int main(void)
                 kdop_limit_mins,
                 kdop_limit_maxs,
                 extrapolation_bounce_strength,
+                bone_position_halflives,
+                bone_rotation_halflives,
                 extrapolator_evaluation,
                 extrapolator,
                 dt);
@@ -480,13 +522,25 @@ int main(void)
         
         GuiSliderBar(
             (Rectangle){ 1100, ui_hei + 100, 120, 20 }, 
+            "decay halflife min", 
+            TextFormat("%5.3f", extrapolation_min_halflife), 
+            &extrapolation_min_halflife, 0.0, 1.0);
+        
+        GuiSliderBar(
+            (Rectangle){ 1100, ui_hei + 130, 120, 20 }, 
+            "decay halflife max", 
+            TextFormat("%5.3f", extrapolation_max_halflife), 
+            &extrapolation_max_halflife, 0.0, 1.0);
+        
+        GuiSliderBar(
+            (Rectangle){ 1100, ui_hei + 160, 120, 20 }, 
             "bounce decay halflife", 
             TextFormat("%5.3f", extrapolation_bounce_halflife), 
             &extrapolation_bounce_halflife, 0.0, 1.0);
         
         if (GuiDropdownBox(
-            (Rectangle){ 1100, ui_hei + 130, 120, 20 }, 
-            "None;Linear;Decay;Clamp;Bounce;Extrapolator",
+            (Rectangle){ 1100, ui_hei + 190, 120, 20 }, 
+            "None;Linear;Decay;Clamp;Bounce;Heuristic;Extrapolator",
             &extrapolation_method,
             extrapolation_method_edit))
         {

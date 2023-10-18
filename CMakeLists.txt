@@ -2,7 +2,9 @@ cmake_minimum_required(VERSION 3.15)
 
 project(controller)
 
-find_package(raylib 3.0 REQUIRED)
+add_subdirectory(raylib)
+
+# add_library(raylib STATIC IMPORTED)
 
 # Download raygui.h if it doesn't exist
 if(NOT EXISTS ${CMAKE_SOURCE_DIR}/raygui.h)

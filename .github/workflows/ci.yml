@@ -1,6 +1,10 @@
 name: C/C++ CI
 
-on: ["push", "pull_request"]
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
 
 jobs:
   ubuntu-build:
@@ -11,5 +15,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v2.0.0
+      - name: Checkout raylib
+        uses: actions/checkout@v2.0.0
+        with:
+          repository: raysan5/raylib
+          path: raylib
       - name: Build project
         uses: nicledomaS/cmake_build_action@v1.4

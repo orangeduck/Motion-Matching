@@ -32,7 +32,7 @@ static inline vec2 operator-(float s, vec2 v)
 
 static inline vec2 operator-(vec2 v, float s)
 {
-    return vec2(v.x - s, v.y - s);
+    return vec2(s - v.x, s - v.y);
 }
 
 static inline vec2 operator-(vec2 v, vec2 w)
@@ -122,7 +122,7 @@ static inline vec3 operator+(vec3 v, vec3 w)
 
 static inline vec3 operator-(float s, vec3 v)
 {
-    return vec3(v.x - s, v.y - s, v.z - s);
+    return vec3(s - v.x, s - v.y, s - v.z);
 }
 
 static inline vec3 operator-(vec3 v, float s)

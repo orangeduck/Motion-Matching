@@ -323,7 +323,7 @@ if __name__ == '__main__':
             
             try:
                 bvh.save('decompressor_Ygnd.bvh', {
-                    'rotations': np.degrees(quat.to_euler(Ygnd_rot[0].cpu().numpy())),
+                    'rotations': np.degrees(quat.to_euler(Ygnd_rot[0].cpu().numpy(), order='zyx')),
                     'positions': 100.0 * Ygnd_pos[0].cpu().numpy(),
                     'offsets': 100.0 * Ygnd_pos[0,0].cpu().numpy(),
                     'parents': parents,
@@ -332,7 +332,7 @@ if __name__ == '__main__':
                 })
                 
                 bvh.save('decompressor_Ytil.bvh', {
-                    'rotations': np.degrees(quat.to_euler(Ytil_rot)),
+                    'rotations': np.degrees(quat.to_euler(Ytil_rot, order='zyx')),
                     'positions': 100.0 * Ytil_pos,
                     'offsets': 100.0 * Ytil_pos[0],
                     'parents': parents,

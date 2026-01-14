@@ -1,36 +1,59 @@
-PLATFORM ?= PLATFORM_DESKTOP
+# ==========================================
+#  Motion-Matching - Linux (Ubuntu) Makefile
+# ==========================================
+PLATFORM := PLATFORM_DESKTOP
 BUILD_MODE ?= RELEASE
-RAYLIB_DIR = C:/raylib
-INCLUDE_DIR = -I ./ -I $(RAYLIB_DIR)/raylib/src -I $(RAYLIB_DIR)/raygui/src
-LIBRARY_DIR = -L $(RAYLIB_DIR)/raylib/src
-DEFINES = -D _DEFAULT_SOURCE -D RAYLIB_BUILD_MODE=$(BUILD_MODE) -D $(PLATFORM)
 
-ifeq ($(PLATFORM),PLATFORM_DESKTOP)
-    CC = g++
-    EXT = .exe
-    ifeq ($(BUILD_MODE),RELEASE)
-        CFLAGS ?= $(DEFINES) -ffast-math -march=native -D NDEBUG -O3 $(RAYLIB_DIR)/raylib/src/raylib.rc.data $(INCLUDE_DIR) $(LIBRARY_DIR) 
-	else
-        CFLAGS ?= $(DEFINES) -g $(RAYLIB_DIR)/raylib/src/raylib.rc.data $(INCLUDE_DIR) $(LIBRARY_DIR) 
-	endif
-    LIBS = -lraylib -lopengl32 -lgdi32 -lwinmm
+# 头文件路径：raylib 和 raygui 安装到 /usr/local/
+INCLUDE_DIR = -I./ -I/usr/local/include -I./raygui/src
+
+# 库文件路径
+LIBRARY_DIR = -L/usr/local/lib
+
+# 预处理器定义
+DEFINES = -D_DEFAULT_SOURCE -D_GNU_SOURCE -D$(PLATFORM)
+
+# 编译器
+CC = g++
+
+# C++ 标准和基础编译选项
+COMMON_CFLAGS = $(DEFINES) $(INCLUDE_DIR) -std=c++17
+
+# 构建模式：Release 或 Debug
+ifeq ($(BUILD_MODE), RELEASE)
+    CFLAGS += $(COMMON_CFLAGS) -O3 -ffast-math -march=native -DNDEBUG
+else
+    CFLAGS += $(COMMON_CFLAGS) -g -O0
 endif
 
-ifeq ($(PLATFORM),PLATFORM_WEB)
-    CC = emcc
-    EXT = .html
-    CFLAGS ?= $(DEFINES) $(RAYLIB_DIR)/raylib/src/libraylib.bc -ffast-math -D NDEBUG -O3 -s USE_GLFW=3 -s FORCE_FILESYSTEM=1 -s MAX_WEBGL_VERSION=2 -s ALLOW_MEMORY_GROWTH=1 --preload-file $(dir $<)resources@resources --shell-file ./shell.html $(INCLUDE_DIR) $(LIBRARY_DIR)
-endif
+# Linux 链接库（关键！替代 -lopengl32 等）
+LIBS = -lraylib -lGL -ldl -lm -lpthread -lrt -lX11 \
+       -lXrandr -lXinerama -lXi -lXcursor -lXxf86vm -lXext
 
+# 源文件和头文件
 SOURCE = $(wildcard *.cpp)
 HEADER = $(wildcard *.h)
 
-.PHONY: all
+# 目标可执行文件名（Linux 不用加 .exe）
+TARGET = controller
 
-all: controller
+# 默认目标
+.PHONY: all clean run
 
-controller: $(SOURCE) $(HEADER)
-	$(CC) -o $@$(EXT) $(SOURCE) $(CFLAGS) $(LIBS) 
+all: $(TARGET)
 
+# 编译规则：单个 cpp 文件 → .o
+%.o: %.cpp $(HEADER)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# 链接所有 .o 成可执行文件
+$(TARGET): $(SOURCE:%.cpp=%.o)
+	$(CC) -o $(TARGET) $^ $(LIBS)
+
+# 清理中间文件和可执行文件
 clean:
-	rm controller$(EXT)
+	rm -f *.o $(TARGET)
+
+# 运行程序（便捷命令）
+run: $(TARGET)
+	./$(TARGET)

@@ -4,6 +4,8 @@
 #include <emscripten/emscripten.h>
 #endif
 
+#include <string.h>  // for memset
+#include <stdio.h>   // for printf
 #include "raylib.h"
 #include "raymath.h"
 #include "common.h"
@@ -15,16 +17,29 @@
 #include "database.h"
 #include "nnet.h"
 #include "lmm.h"
+#include "udpsender.h"
 
-#include <initializer_list>
 #include <functional>
-
+#include <time.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <sys/time.h>
+#include <ctime>
 //--------------------------------------
+
+UDPsender udp_sender;
+
+static float g_desired_yaw = 0.0f;       // 累积航向角
+static float g_max_yaw_rate = 2.5f;      // rad/s，最大转速（可调）
+
 
 static inline Vector3 to_Vector3(vec3 v)
 {
     return (Vector3){ v.x, v.y, v.z };
 }
+
 
 //--------------------------------------
 
@@ -90,7 +105,7 @@ Mesh make_character_mesh(character& c)
 
 enum
 {
-    GAMEPAD_PLAYER = 0,
+    GAMEPAD_PLAYER = 3,
 };
 
 enum
@@ -101,10 +116,16 @@ enum
 
 vec3 gamepad_get_stick(int stick, const float deadzone = 0.2f)
 {
-    float gamepadx = GetGamepadAxisMovement(GAMEPAD_PLAYER, stick == GAMEPAD_STICK_LEFT ? GAMEPAD_AXIS_LEFT_X : GAMEPAD_AXIS_RIGHT_X);
-    float gamepady = GetGamepadAxisMovement(GAMEPAD_PLAYER, stick == GAMEPAD_STICK_LEFT ? GAMEPAD_AXIS_LEFT_Y : GAMEPAD_AXIS_RIGHT_Y);
+    float gamepadx = GetGamepadAxisMovement(
+        GAMEPAD_PLAYER,
+        stick == GAMEPAD_STICK_LEFT ? GAMEPAD_AXIS_LEFT_X : GAMEPAD_AXIS_RIGHT_X);
+
+    float gamepady = -GetGamepadAxisMovement(
+        GAMEPAD_PLAYER,
+        stick == GAMEPAD_STICK_LEFT ? GAMEPAD_AXIS_LEFT_Y : GAMEPAD_AXIS_RIGHT_Y);
+
     float gamepadmag = sqrtf(gamepadx*gamepadx + gamepady*gamepady);
-    
+
     if (gamepadmag > deadzone)
     {
         float gamepaddirx = gamepadx / gamepadmag;
@@ -125,22 +146,24 @@ vec3 gamepad_get_stick(int stick, const float deadzone = 0.2f)
 //--------------------------------------
 
 float orbit_camera_update_azimuth(
-    const float azimuth, 
+    const float azimuth,
     const vec3 gamepadstick_right,
     const bool desired_strafe,
     const float dt)
 {
-    vec3 gamepadaxis = desired_strafe ? vec3() : gamepadstick_right;
+    // desired_strafe=true：右摇杆控制相机
+    // desired_strafe=false：右摇杆不控制相机（用于机器人 yaw rate）
+    vec3 gamepadaxis = desired_strafe ? gamepadstick_right : vec3();
     return azimuth + 2.0f * dt * -gamepadaxis.x;
 }
 
 float orbit_camera_update_altitude(
-    const float altitude, 
+    const float altitude,
     const vec3 gamepadstick_right,
     const bool desired_strafe,
     const float dt)
 {
-    vec3 gamepadaxis = desired_strafe ? vec3() : gamepadstick_right;
+    vec3 gamepadaxis = desired_strafe ? gamepadstick_right : vec3();
     return clampf(altitude + 2.0f * dt * gamepadaxis.z, 0.0, 0.4f * PIf);
 }
 
@@ -204,69 +227,46 @@ void desired_gait_update(
 }
 
 vec3 desired_velocity_update(
-    const vec3 gamepadstick_left,
-    const float camera_azimuth,
-    const quat simulation_rotation,
+    const vec3 gamepadstick_left,     // base坐标系输入：x侧向, z前进（+Z 前进）
+    const float /*camera_azimuth*/,   // 不再使用，但保留参数以减少改动量
+    const quat simulation_rotation,   // base当前朝向
     const float fwrd_speed,
     const float side_speed,
     const float back_speed)
 {
-    // Find stick position in world space by rotating using camera azimuth
-    vec3 global_stick_direction = quat_mul_vec3(
-        quat_from_angle_axis(camera_azimuth, vec3(0, 1, 0)), gamepadstick_left);
-    
-    // Find stick position local to current facing direction
-    vec3 local_stick_direction = quat_inv_mul_vec3(
-        simulation_rotation, global_stick_direction);
-    
-    // Scale stick by forward, sideways and backwards speeds
-    vec3 local_desired_velocity = local_stick_direction.z > 0.0 ?
-        vec3(side_speed, 0.0f, fwrd_speed) * local_stick_direction :
-        vec3(side_speed, 0.0f, back_speed) * local_stick_direction;
-    
-    // Re-orientate into the world space
-    return quat_mul_vec3(simulation_rotation, local_desired_velocity);
+    // base坐标系速度（全向）：v_base = (vx, 0, vz)
+    float fwd  = gamepadstick_left.z; // +Z 前进
+    float side = gamepadstick_left.x; // +X 侧向
+
+    float vz = (fwd >= 0.0f) ? (fwd * fwrd_speed) : (fwd * back_speed);
+    float vx = side * side_speed;
+
+    vec3 v_base = vec3(vx, 0.0f, vz);
+
+    // base -> world
+    return quat_mul_vec3(simulation_rotation, v_base);
 }
 
 quat desired_rotation_update(
     const quat desired_rotation,
-    const vec3 gamepadstick_left,
+    const vec3 /*gamepadstick_left*/,
     const vec3 gamepadstick_right,
-    const float camera_azimuth,
+    const float /*camera_azimuth*/,
     const bool desired_strafe,
-    const vec3 desired_velocity)
+    const vec3 /*desired_velocity*/)
 {
-    quat desired_rotation_curr = desired_rotation;
-    
-    // If strafe is active then desired direction is coming from right
-    // stick as long as that stick is being used, otherwise we assume
-    // forward facing
+    // desired_strafe=true：右摇杆控制相机，不改机器人朝向
     if (desired_strafe)
     {
-        vec3 desired_direction = quat_mul_vec3(quat_from_angle_axis(camera_azimuth, vec3(0, 1, 0)), vec3(0, 0, -1));
+        return desired_rotation;
+    }
 
-        if (length(gamepadstick_right) > 0.01f)
-        {
-            desired_direction = quat_mul_vec3(quat_from_angle_axis(camera_azimuth, vec3(0, 1, 0)), normalize(gamepadstick_right));
-        }
-        
-        return quat_from_angle_axis(atan2f(desired_direction.x, desired_direction.z), vec3(0, 1, 0));            
-    }
-    
-    // If strafe is not active the desired direction comes from the left 
-    // stick as long as that stick is being used
-    else if (length(gamepadstick_left) > 0.01f)
-    {
-        
-        vec3 desired_direction = normalize(desired_velocity);
-        return quat_from_angle_axis(atan2f(desired_direction.x, desired_direction.z), vec3(0, 1, 0));
-    }
-    
-    // Otherwise desired direction remains the same
-    else
-    {
-        return desired_rotation_curr;
-    }
+    // desired_strafe=false：右摇杆X控制 yaw 角速度
+    float omega_cmd = -gamepadstick_right.x * g_max_yaw_rate; // 觉得反了去掉负号
+
+    // 这里没有 dt 参数，所以真正的积分在 update_func 里完成（有 dt）
+    (void)omega_cmd;
+    return desired_rotation;
 }
 
 //--------------------------------------
@@ -659,27 +659,29 @@ void trajectory_desired_velocities_predict(
   slice1d<vec3> desired_velocities,
   const slice1d<quat> trajectory_rotations,
   const vec3 desired_velocity,
-  const float camera_azimuth,
+  const float /*camera_azimuth*/,
   const vec3 gamepadstick_left,
-  const vec3 gamepadstick_right,
-  const bool desired_strafe,
+  const vec3 /*gamepadstick_right*/,
+  const bool /*desired_strafe*/,
   const float fwrd_speed,
   const float side_speed,
   const float back_speed,
-  const float dt)
+  const float /*dt*/)
 {
     desired_velocities(0) = desired_velocity;
-    
+
+    // 未来每个采样点：用未来的 trajectory_rotations(i) 作为 base朝向，
+    // 把“同一个 base 速度指令”变到 world。
     for (int i = 1; i < desired_velocities.size; i++)
     {
-        desired_velocities(i) = desired_velocity_update(
-            gamepadstick_left,
-            orbit_camera_update_azimuth(
-                camera_azimuth, gamepadstick_right, desired_strafe, i * dt),
-            trajectory_rotations(i),
-            fwrd_speed,
-            side_speed,
-            back_speed);
+        float fwd  = gamepadstick_left.z;
+        float side = gamepadstick_left.x;
+
+        float vz = (fwd >= 0.0f) ? (fwd * fwrd_speed) : (fwd * back_speed);
+        float vx = side * side_speed;
+
+        vec3 v_base = vec3(vx, 0.0f, vz);
+        desired_velocities(i) = quat_mul_vec3(trajectory_rotations(i), v_base);
     }
 }
 
@@ -722,26 +724,42 @@ void trajectory_positions_predict(
 // camera rotation and other parameters
 void trajectory_desired_rotations_predict(
   slice1d<quat> desired_rotations,
-  const slice1d<vec3> desired_velocities,
+  const slice1d<vec3> /*desired_velocities*/,
   const quat desired_rotation,
-  const float camera_azimuth,
-  const vec3 gamepadstick_left,
+  const float /*camera_azimuth*/,
+  const vec3 /*gamepadstick_left*/,
   const vec3 gamepadstick_right,
   const bool desired_strafe,
   const float dt)
 {
     desired_rotations(0) = desired_rotation;
-    
+
+    // 相机模式：不改变机器人期望朝向（保持）
+    if (desired_strafe)
+    {
+        for (int i = 1; i < desired_rotations.size; i++)
+        {
+            desired_rotations(i) = desired_rotations(i-1);
+        }
+        return;
+    }
+
+    // 非相机模式：右摇杆X -> yaw rate，积分预测未来 desired yaw
+    float omega_cmd = -gamepadstick_right.x * g_max_yaw_rate; // 反了就去掉负号
+
+    // 从当前 desired_rotation 的 yaw 开始积分
+    vec3 fw = quat_mul_vec3(desired_rotation, vec3(0,0,1));
+    float yaw0 = atan2f(fw.x, fw.z);
+
     for (int i = 1; i < desired_rotations.size; i++)
     {
-        desired_rotations(i) = desired_rotation_update(
-            desired_rotations(i-1),
-            gamepadstick_left,
-            gamepadstick_right,
-            orbit_camera_update_azimuth(
-                camera_azimuth, gamepadstick_right, desired_strafe, i * dt),
-            desired_strafe,
-            desired_velocities(i));
+        float t = (float)i * dt;
+        float yaw = yaw0 + omega_cmd * t;
+
+        if (yaw >  PI) yaw -= 2.0f * PI;
+        if (yaw < -PI) yaw += 2.0f * PI;
+
+        desired_rotations(i) = quat_from_angle_axis(yaw, vec3(0,1,0));
     }
 }
 
@@ -1208,8 +1226,23 @@ int main(void)
     SetConfigFlags(FLAG_VSYNC_HINT);
     SetConfigFlags(FLAG_MSAA_4X_HINT);
     InitWindow(screen_width, screen_height, "raylib [data vs code driven displacement]");
-    SetTargetFPS(60);
+    SetTargetFPS(50);
     
+    char *paddb = LoadFileText("./resources/gamecontrollerdb.txt");
+    if (paddb) {
+        int added = SetGamepadMappings(paddb);
+        TraceLog(LOG_INFO, "mappings added: %d", added);
+        UnloadFileText(paddb);
+    } else {
+        TraceLog(LOG_WARNING, "failed to load gamecontrollerdb.txt");
+    }
+
+    TraceLog(LOG_INFO, "avail=%d name=%s axisCount=%d btnPressed=%d",
+         IsGamepadAvailable(GAMEPAD_PLAYER),
+         GetGamepadName(GAMEPAD_PLAYER),
+         GetGamepadAxisCount(GAMEPAD_PLAYER),
+         GetGamepadButtonPressed());
+
     // Camera
 
     Camera3D camera = { 0 };
@@ -1219,7 +1252,7 @@ int main(void)
     camera.fovy = 45.0f;
     camera.projection = CAMERA_PERSPECTIVE;
 
-    float camera_azimuth = 0.0f;
+    float camera_azimuth = PI; //0.0f;
     float camera_altitude = 0.4f;
     float camera_distance = 4.0f;
     
@@ -1228,9 +1261,12 @@ int main(void)
     array1d<vec3> obstacles_positions(3);
     array1d<vec3> obstacles_scales(3);
     
-    obstacles_positions(0) = vec3(5.0f, 0.0f, 6.0f);
-    obstacles_positions(1) = vec3(-3.0f, 0.0f, -5.0f);
-    obstacles_positions(2) = vec3(-8.0f, 0.0f, 3.0f);
+    // obstacles_positions(0) = vec3(5.0f, 0.0f, 6.0f);
+    // obstacles_positions(1) = vec3(-3.0f, 0.0f, -5.0f);
+    // obstacles_positions(2) = vec3(-8.0f, 0.0f, 3.0f);
+    obstacles_positions(0) = vec3(9999.0f, 9999.0f, 9999.0f);
+    obstacles_positions(1) = vec3(9999.0f, 9999.0f, 9999.0f);
+    obstacles_positions(2) = vec3(9999.0f, 9999.0f, 9999.0f);
     
     obstacles_scales(0) = vec3(2.0f, 1.0f, 5.0f);
     obstacles_scales(1) = vec3(4.0f, 1.0f, 4.0f);
@@ -1252,12 +1288,17 @@ int main(void)
     Mesh character_mesh = make_character_mesh(character_data);
     Model character_model = LoadModelFromMesh(character_mesh);
     character_model.materials[0].shader = character_shader;
+
+    // UDP配置参数
+    const char* UDP_TARGET_IP = "127.0.0.1";  // 目标IP
+    const int UDP_TARGET_PORT = 8000;         // 目标端口
     
     // Load Animation Data and build Matching Database
     
     database db;
     database_load(db, "./resources/database.bin");
-    
+    bool udp_init_result = udp_sender.init_udp(UDP_TARGET_IP, UDP_TARGET_PORT);
+
     float feature_weight_foot_position = 0.75f;
     float feature_weight_foot_velocity = 1.0f;
     float feature_weight_hip_velocity = 1.0f;
@@ -1471,7 +1512,7 @@ int main(void)
     
     // Learned Motion Matching
     
-    bool lmm_enabled = false;
+    bool lmm_enabled = true;
     
     nnet decompressor, stepper, projector;    
     nnet_load(decompressor, "./resources/decompressor.bin");
@@ -1490,18 +1531,48 @@ int main(void)
     
     // Go
 
-    float dt = 1.0f / 60.0f;
+    float dt = 1.0f / 50.0f;
 
     auto update_func = [&]()
     {
-      
+        // 验证手柄编号
+        // for (int i = 0; i < 8; i++)
+        // {
+        //     if (IsGamepadAvailable(i))
+        //     {
+        //         TraceLog(LOG_INFO, "gamepad %d: %s", i, GetGamepadName(i));
+        //     }
+        // }
+
         // Get gamepad stick states
         vec3 gamepadstick_left = gamepad_get_stick(GAMEPAD_STICK_LEFT);
         vec3 gamepadstick_right = gamepad_get_stick(GAMEPAD_STICK_RIGHT);
-        
+    
         // Get if strafe is desired
         bool desired_strafe = desired_strafe_update();
         
+        // --- Combined Gamepad + Keyboard Input ---
+        vec3 raw_input = vec3();
+        // 优先使用游戏手柄输入
+        if (IsGamepadAvailable(GAMEPAD_PLAYER))
+        {
+            raw_input = gamepad_get_stick(GAMEPAD_STICK_LEFT);
+        }
+        // 如果没有有效的手柄输入，则使用键盘 WASD
+        if (length(raw_input) < 0.01f)
+        {
+            if (IsKeyDown(KEY_W)) raw_input.z += 1.0f; // 前进
+            if (IsKeyDown(KEY_S)) raw_input.z -= 1.0f; // 后退
+            if (IsKeyDown(KEY_A)) raw_input.x += 1.0f;
+            if (IsKeyDown(KEY_D)) raw_input.x -= 1.0f;
+            if (length(raw_input) > 0.01f)
+            {
+            raw_input = normalize(raw_input);  // 正则化，避免斜向加速
+            }
+        }
+        // 设置最终输入
+        gamepadstick_left = raw_input;
+        TraceLog(LOG_INFO, "pad_left: x=%f z=%f", gamepadstick_left.x, gamepadstick_left.z);    
         // Get the desired gait (walk / run)
         desired_gait_update(
             desired_gait,
@@ -1513,24 +1584,33 @@ int main(void)
         float simulation_side_speed = lerpf(simulation_run_side_speed, simulation_walk_side_speed, desired_gait);
         float simulation_back_speed = lerpf(simulation_run_back_speed, simulation_walk_back_speed, desired_gait);
         
-        // Get the desired velocity
+        // 1) base速度指令（全向） -> world
         vec3 desired_velocity_curr = desired_velocity_update(
             gamepadstick_left,
-            camera_azimuth,
+            camera_azimuth,          // 参数保留但函数内部不再使用
             simulation_rotation,
             simulation_fwrd_speed,
             simulation_side_speed,
             simulation_back_speed);
-            
-        // Get the desired rotation/direction
-        quat desired_rotation_curr = desired_rotation_update(
-            desired_rotation,
-            gamepadstick_left,
-            gamepadstick_right,
-            camera_azimuth,
-            desired_strafe,
-            desired_velocity_curr);
-        
+
+        // 2) desired_rotation：非相机模式用右摇杆 yaw rate 积分；相机模式保持
+        quat desired_rotation_curr = desired_rotation;
+
+        if (!desired_strafe)
+        {
+            // 右摇杆X -> yaw rate
+            float omega_cmd = -gamepadstick_right.x * g_max_yaw_rate; // 反了就去掉负号
+            g_desired_yaw += omega_cmd * dt;
+
+            if (g_desired_yaw >  PI) g_desired_yaw -= 2.0f * PI;
+            if (g_desired_yaw < -PI) g_desired_yaw += 2.0f * PI;
+
+            desired_rotation_curr = quat_from_angle_axis(g_desired_yaw, vec3(0,1,0));
+        }
+        else
+        {
+            desired_rotation_curr = desired_rotation; // 相机模式不改机器人朝向
+        }
         // Check if we should force a search because input changed quickly
         desired_velocity_change_prev = desired_velocity_change_curr;
         desired_velocity_change_curr =  (desired_velocity_curr - desired_velocity) / dt;
@@ -1853,6 +1933,13 @@ int main(void)
             
             simulation_position = synchronized_position;
             simulation_rotation = synchronized_rotation;
+
+            // 初始化期望朝向（用于 yaw-rate 控制）
+            desired_rotation = simulation_rotation;
+            {
+                vec3 fw = quat_mul_vec3(desired_rotation, vec3(0,0,1));
+                g_desired_yaw = atan2f(fw.x, fw.z);
+            }
             
             inertialize_root_adjust(
                 bone_offset_positions(0),
@@ -2459,7 +2546,20 @@ int main(void)
             TextFormat("%5.3f", ik_unlock_radius), 
             &ik_unlock_radius, 0.0f, 0.5f);
         
-        //---------
+        // *** UDP sender UI ***
+        float ui_udp_hei = 550;  // 调整到合适的位置
+        GuiGroupBox((Rectangle){ 970, ui_udp_hei, 290, 100 }, "UDP Streaming");
+        GuiCheckBox(
+            (Rectangle){ 990, ui_udp_hei + 30, 20, 20 },
+            "Enable UDP Streaming",
+            &udp_sender.udp_enabled);
+        GuiLabel((Rectangle){ 990, ui_udp_hei + 60, 200, 20 }, 
+                TextFormat("Target IP Port: %s:%d", UDP_TARGET_IP, UDP_TARGET_PORT));
+        // UDP发送
+        if (udp_sender.udp_enabled && udp_sender.udp_initialized) {
+            // udp_sender.send_frame_udp(bone_positions, bone_rotations, db.bone_parents);
+            udp_sender.send_frame_udp(global_bone_positions, global_bone_rotations);
+        }
 
         EndDrawing();
 
@@ -2474,7 +2574,6 @@ int main(void)
         update_func();
     }
 #endif
-
     // Unload stuff and finish
     UnloadModel(character_model);
     UnloadModel(ground_plane_model);

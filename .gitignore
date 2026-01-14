@@ -1,10 +1,8 @@
-controller.exe
-controller.data
-controller.js
-controller.html
-controller.wasm
+controller.*
+controller
 *__pycache__*
 *.png
 *.bvh
 *.log
+.vscode/*
 resources/runs*
